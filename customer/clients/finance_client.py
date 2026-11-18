@@ -9,7 +9,7 @@ import uuid
 from typing import Any
 
 from customer.config.config import settings
-from customer.utils.httpx_client import httpx_client
+import customer.utils.httpx_client as httpx_client_mod
 
 logger = logging.getLogger(__name__)
 
@@ -17,17 +17,34 @@ logger = logging.getLogger(__name__)
 class FinanceClient:
     """金融业务中台 API 客户端."""
 
-    def __init__(self, base_url: str | None = None, default_customer_no: str | None = None):
+    def __init__(
+        self,
+        base_url: str | None = None,
+        default_customer_no: str | None = None,
+        default_channel_code: str = "MOBILE_BANK",
+    ):
         self.base_url = (base_url or settings.finance_api_base_url).rstrip("/")
         self.default_customer_no = default_customer_no or getattr(
             settings, "finance_default_customer_no", "CUST00000001"
         )
+        self.default_channel_code = default_channel_code
 
-    def _build_headers(self, customer_no: str | None = None) -> dict[str, str]:
+    @staticmethod
+    def _http():
+        if httpx_client_mod.httpx_client is None:
+            httpx_client_mod.init_httpx_client()
+        return httpx_client_mod.httpx_client
+
+    def _build_headers(
+        self,
+        customer_no: str | None = None,
+        channel_code: str | None = None,
+    ) -> dict[str, str]:
         token = customer_no or self.default_customer_no
         return {
             "Authorization": f"Bearer {token}",
             "X-Request-Id": uuid.uuid4().hex,
+            "X-Channel-Code": channel_code or self.default_channel_code,
             "Content-Type": "application/json",
         }
 
@@ -37,7 +54,7 @@ class FinanceClient:
         """查询银行账户详情（含余额、可用余额、冻结金额、状态）."""
         url = f"{self.base_url}/accounts/{account_no}"
         headers = self._build_headers(customer_no)
-        response = await httpx_client.get(url, headers=headers)
+        response = await self._http().get(url, headers=headers)
         response.raise_for_status()
         return response.json().get("data", {})
 
@@ -54,12 +71,12 @@ class FinanceClient:
         url = f"{self.base_url}/accounts/{account_no}/transactions"
         params: dict[str, Any] = {"page_no": page_no, "page_size": page_size}
         if start_date:
-            params["start_date"] = start_date
+            params["start_time"] = f"{start_date}T00:00:00" if len(start_date) == 10 else start_date
         if end_date:
-            params["end_date"] = end_date
+            params["end_time"] = f"{end_date}T23:59:59" if len(end_date) == 10 else end_date
 
         headers = self._build_headers(customer_no)
-        response = await httpx_client.get(url, params=params, headers=headers)
+        response = await self._http().get(url, params=params, headers=headers)
         response.raise_for_status()
         return response.json().get("data", {})
 
@@ -79,11 +96,72 @@ class FinanceClient:
             "reason": reason,
         }
         headers = self._build_headers(customer_no)
-        response = await httpx_client.post(url, json=payload, headers=headers)
+        response = await self._http().post(url, json=payload, headers=headers)
         response.raise_for_status()
         return response.json().get("data", {})
 
     # ==================== 2. 信贷申请 ====================
+
+    async def get_credit_limits(
+        self,
+        customer_no: str | None = None,
+        product_code: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """查询客户名下授信额度列表."""
+        resolved_customer = customer_no or self.default_customer_no
+        url = f"{self.base_url}/customers/{resolved_customer}/credit-limits"
+        params: dict[str, Any] = {}
+        if product_code:
+            params["product_code"] = product_code
+        headers = self._build_headers(resolved_customer)
+        response = await self._http().get(url, params=params, headers=headers)
+        response.raise_for_status()
+        data = response.json().get("data", {})
+        return data.get("list", []) if isinstance(data, dict) else data
+
+    async def get_loan_product_detail(self, product_code: str) -> dict[str, Any]:
+        """查询贷款产品详情."""
+        url = f"{self.base_url}/loan/products/{product_code}"
+        headers = self._build_headers()
+        response = await self._http().get(url, headers=headers)
+        response.raise_for_status()
+        return response.json().get("data", {})
+
+    async def _resolve_limit_and_repayment(
+        self,
+        customer_no: str,
+        product_code: str,
+        apply_amount: float,
+        limit_no: str | None,
+        repayment_method: str | None,
+    ) -> tuple[str, str]:
+        """自动解析客户可用授信额度编号及产品还款方式."""
+        resolved_limit = limit_no
+        resolved_product_code = product_code
+        if not resolved_limit:
+            limits = await self.get_credit_limits(customer_no=customer_no, product_code=product_code)
+            if not limits and product_code:
+                limits = await self.get_credit_limits(customer_no=customer_no)
+            if not limits:
+                raise ValueError(f"客户 {customer_no} 暂无可用授信额度，请先办理授信申请")
+            matched = next(
+                (item for item in limits if float(item.get("available_limit_amount", 0)) >= apply_amount),
+                limits[0],
+            )
+            resolved_limit = matched["limit_no"]
+            resolved_product_code = matched.get("product_code") or product_code
+
+        resolved_repayment = repayment_method
+        if not resolved_repayment:
+            try:
+                detail = await self.get_loan_product_detail(resolved_product_code)
+                product_info = detail.get("product_detail", {}) if isinstance(detail, dict) else {}
+                resolved_repayment = product_info.get("repayment_method")
+            except Exception as exc:
+                logger.warning("获取贷款产品详情失败，将使用默认还款方式: %s", exc)
+            resolved_repayment = resolved_repayment or "equal_principal_interest"
+
+        return resolved_limit, resolved_repayment
 
     async def apply_loan(
         self,
@@ -91,23 +169,36 @@ class FinanceClient:
         product_code: str,
         apply_amount: str | float,
         loan_term: int,
-        loan_purpose: str = "日常消费",
-        channel_code: str = "mobile_bank",
+        loan_purpose: str = "consume",
+        channel_code: str = "MOBILE_BANK",
         request_no: str | None = None,
+        limit_no: str | None = None,
+        repayment_method: str | None = None,
     ) -> dict[str, Any]:
         """提交贷款申请."""
+        resolved_customer = customer_no or self.default_customer_no
+        amount_value = float(apply_amount)
+        resolved_limit, resolved_repayment = await self._resolve_limit_and_repayment(
+            customer_no=resolved_customer,
+            product_code=product_code,
+            apply_amount=amount_value,
+            limit_no=limit_no,
+            repayment_method=repayment_method,
+        )
+
         url = f"{self.base_url}/loan/applications"
         payload = {
             "request_no": request_no or uuid.uuid4().hex,
-            "customer_no": customer_no or self.default_customer_no,
-            "product_code": product_code,
-            "apply_amount": f"{float(apply_amount):.2f}",
-            "loan_term": int(loan_term),
-            "loan_purpose": loan_purpose,
-            "channel_code": channel_code,
+            "customer_no": resolved_customer,
+            "limit_no": resolved_limit,
+            "apply_amount": f"{amount_value:.2f}",
+            "apply_term_months": int(loan_term),
+            "repayment_method": resolved_repayment,
+            "loan_purpose": loan_purpose or "consume",
+            "materials": [],
         }
-        headers = self._build_headers(customer_no)
-        response = await httpx_client.post(url, json=payload, headers=headers)
+        headers = self._build_headers(resolved_customer, channel_code=channel_code)
+        response = await self._http().post(url, json=payload, headers=headers)
         response.raise_for_status()
         return response.json().get("data", {})
 
@@ -119,23 +210,28 @@ class FinanceClient:
         category: str,
         description: str,
         related_no: str | None = None,
-        channel_code: str = "mobile_bank",
+        channel_code: str = "MOBILE_BANK",
         request_no: str | None = None,
     ) -> dict[str, Any]:
         """创建客服投诉/咨询工单."""
+        resolved_customer = customer_no or self.default_customer_no
         url = f"{self.base_url}/support/tickets"
+        content = description
+        if related_no:
+            content = f"{description}（关联业务单号：{related_no}）"
+        title_snippet = description[:30] if description else "客服工单"
         payload = {
             "request_no": request_no or uuid.uuid4().hex,
-            "customer_no": customer_no or self.default_customer_no,
-            "category": category,
-            "description": description,
-            "channel_code": channel_code,
+            "customer_no": resolved_customer,
+            "ticket_type": category,
+            "ticket_title": f"[{category}] {title_snippet}",
+            "ticket_content": content,
+            "related_type": "none",
+            "related_id": None,
         }
-        if related_no:
-            payload["related_no"] = related_no
 
-        headers = self._build_headers(customer_no)
-        response = await httpx_client.post(url, json=payload, headers=headers)
+        headers = self._build_headers(resolved_customer, channel_code=channel_code)
+        response = await self._http().post(url, json=payload, headers=headers)
         response.raise_for_status()
         return response.json().get("data", {})
 
@@ -145,19 +241,23 @@ class FinanceClient:
         """获取信贷产品列表及利率说明."""
         url = f"{self.base_url}/loan/products"
         headers = self._build_headers()
-        response = await httpx_client.get(url, params={"page_no": page_no, "page_size": page_size}, headers=headers)
+        response = await self._http().get(url, params={"page_no": page_no, "page_size": page_size}, headers=headers)
         response.raise_for_status()
         data = response.json().get("data", {})
-        return data.get("items", []) if isinstance(data, dict) else data
+        if isinstance(data, dict):
+            return data.get("list") or data.get("items") or []
+        return data
 
     async def get_wealth_products(self, page_no: int = 1, page_size: int = 20) -> list[dict[str, Any]]:
         """获取理财/基金产品列表及收益说明."""
         url = f"{self.base_url}/wealth/products"
         headers = self._build_headers()
-        response = await httpx_client.get(url, params={"page_no": page_no, "page_size": page_size}, headers=headers)
+        response = await self._http().get(url, params={"page_no": page_no, "page_size": page_size}, headers=headers)
         response.raise_for_status()
         data = response.json().get("data", {})
-        return data.get("items", []) if isinstance(data, dict) else data
+        if isinstance(data, dict):
+            return data.get("list") or data.get("items") or []
+        return data
 
 
 finance_client = FinanceClient()
