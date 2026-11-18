@@ -1,7 +1,13 @@
 """查询账户交易流水 Action."""
 import logging
 
-from customer.actions.base import Action, ActionResult, get_active_slots, resolve_customer_no
+from customer.actions.base import (
+    Action,
+    ActionResult,
+    format_action_error,
+    get_active_slots,
+    resolve_customer_no,
+)
 from customer.clients.finance_client import finance_client
 from customer.domain.state import DialogueState
 
@@ -63,5 +69,5 @@ class TransactionQueryAction(Action):
         except Exception as e:
             logger.error("查询交易流水失败: %s", e)
             return ActionResult(
-                result={"reply": f"查询交易明细失败，请稍后重试或核对账号是否正确。({e})"}
+                result={"reply": f"查询交易明细失败：{format_action_error(e)}，请核对账号是否正确或稍后重试。"}
             )

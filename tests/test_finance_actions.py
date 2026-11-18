@@ -4,6 +4,8 @@ import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from customer.actions.builder import registry_action
@@ -181,6 +183,52 @@ class TestFinanceActionsExecution(unittest.IsolatedAsyncioTestCase):
         state = _build_state("loan_application", {"loan_amount": "abc", "loan_term": "12"})
         res = await action.run(state)
         self.assertIn("格式有误", res.result["reply"])
+
+    async def test_loan_application_parses_chinese_units(self):
+        action = LoanApplicationAction()
+        state = _build_state(
+            "loan_application",
+            {"loan_amount": "10万元", "loan_term": "36期"},
+        )
+
+        with patch(
+            "customer.actions.impl.loan_application.finance_client.apply_loan",
+            new=AsyncMock(return_value={"application_no": "LAP202611180099", "application_status": "submitted"}),
+        ) as mock_loan:
+            res = await action.run(state)
+
+        mock_loan.assert_awaited_once_with(
+            customer_no="CUST00000001",
+            product_code="LOAN_CONSUMER_STD",
+            apply_amount=100000.0,
+            loan_term=36,
+            loan_purpose="consume",
+            limit_no=None,
+        )
+        self.assertEqual(res.result["loan_amount"], "100000.00")
+        self.assertEqual(res.result["loan_term"], 36)
+        self.assertIn("LAP202611180099", res.result["reply"])
+
+    async def test_loan_application_surfaces_chinese_http_error(self):
+        action = LoanApplicationAction()
+        state = _build_state("loan_application", {"loan_amount": "100000000", "loan_term": "36"})
+        req = httpx.Request("POST", "http://127.0.0.1:8000/api/v1/loan/applications")
+        resp = httpx.Response(
+            409,
+            request=req,
+            json={"code": "CREDIT_LIMIT_NOT_ENOUGH", "message": "授信可用额度不足"},
+        )
+        err = httpx.HTTPStatusError("409 Conflict", request=req, response=resp)
+
+        with patch(
+            "customer.actions.impl.loan_application.finance_client.apply_loan",
+            new=AsyncMock(side_effect=err),
+        ):
+            res = await action.run(state)
+
+        self.assertIn("授信可用额度不足", res.result["reply"])
+        self.assertIn("CREDIT_LIMIT_NOT_ENOUGH", res.result["reply"])
+        self.assertNotIn("409 Conflict", res.result["reply"])
 
     async def test_complaint_ticket_action(self):
         action = ComplaintTicketAction()

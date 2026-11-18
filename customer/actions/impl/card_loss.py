@@ -1,7 +1,13 @@
 """信用卡/账户紧急挂失 Action."""
 import logging
 
-from customer.actions.base import Action, ActionResult, get_active_slots, resolve_customer_no
+from customer.actions.base import (
+    Action,
+    ActionResult,
+    format_action_error,
+    get_active_slots,
+    resolve_customer_no,
+)
 from customer.clients.finance_client import finance_client
 from customer.domain.state import DialogueState
 
@@ -46,5 +52,5 @@ class CardLossAction(Action):
         except Exception as e:
             logger.error("卡片挂失操作失败: %s", e)
             return ActionResult(
-                result={"reply": f"挂失操作失败，请立即拨打我行 24 小时人工客服电话 95555 进行紧急止付。({e})"}
+                result={"reply": f"挂失操作失败：{format_action_error(e)}，请立即拨打我行 24 小时人工客服电话 95555 进行紧急止付。"}
             )

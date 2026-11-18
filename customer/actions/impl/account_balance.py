@@ -2,7 +2,13 @@
 from decimal import Decimal
 import logging
 
-from customer.actions.base import Action, ActionResult, get_active_slots, resolve_customer_no
+from customer.actions.base import (
+    Action,
+    ActionResult,
+    format_action_error,
+    get_active_slots,
+    resolve_customer_no,
+)
 from customer.clients.finance_client import finance_client
 from customer.domain.state import DialogueState
 
@@ -60,5 +66,5 @@ class AccountBalanceQueryAction(Action):
         except Exception as e:
             logger.error("查询账户余额失败: %s", e)
             return ActionResult(
-                result={"reply": f"查询账户余额失败，请稍后重试或核对账号是否正确。({e})"}
+                result={"reply": f"查询账户余额失败：{format_action_error(e)}，请核对账号是否正确或稍后重试。"}
             )

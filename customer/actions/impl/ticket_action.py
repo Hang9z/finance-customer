@@ -1,7 +1,13 @@
 """创建客服投诉工单 Action."""
 import logging
 
-from customer.actions.base import Action, ActionResult, get_active_slots, resolve_customer_no
+from customer.actions.base import (
+    Action,
+    ActionResult,
+    format_action_error,
+    get_active_slots,
+    resolve_customer_no,
+)
 from customer.clients.finance_client import finance_client
 from customer.domain.state import DialogueState
 
@@ -60,5 +66,5 @@ class ComplaintTicketAction(Action):
         except Exception as e:
             logger.error("创建投诉工单失败: %s", e)
             return ActionResult(
-                result={"reply": f"创建工单失败，请稍后重试或联系人工客服。({e})"}
+                result={"reply": f"创建工单失败：{format_action_error(e)}，请稍后重试或联系人工客服。"}
             )

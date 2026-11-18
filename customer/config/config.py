@@ -21,6 +21,8 @@ class Settings(BaseSettings):
 
     llm_api_key: str = ""
     llm_base_url: str = "https://api.cloudflare.com/client/v4/accounts/e6175ad163bd8b2ea0dad6cdd71b3a38/ai/v1"
+    llm_enable_thinking: bool = False
+    llm_reasoning_effort: str | None = None
 
     # 数据库
     database_url: str = "mysql+aiomysql://root:123456@127.0.0.1:3306/customer_service?charset=utf8mb4"

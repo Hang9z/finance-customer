@@ -3,6 +3,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
+
 from customer.domain.state import DialogueState
 
 
@@ -36,3 +38,21 @@ def resolve_customer_no(
     if state.sender_id and str(state.sender_id).startswith(("CUS", "CUST")):
         return str(state.sender_id)
     return None
+
+
+def format_action_error(exc: Exception) -> str:
+    """从 HTTPStatusError 或普通异常中提取友好的中文错误描述."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        try:
+            payload = exc.response.json()
+            if isinstance(payload, dict):
+                message = payload.get("message") or payload.get("detail")
+                code = payload.get("code")
+                if message and code:
+                    return f"{message}（{code}）"
+                if message:
+                    return str(message)
+        except Exception:
+            pass
+        return f"中台服务返回异常（HTTP {exc.response.status_code}）"
+    return str(exc)

@@ -1,11 +1,69 @@
 """提交消费贷款申请 Action."""
 import logging
+import re
 
-from customer.actions.base import Action, ActionResult, get_active_slots, resolve_customer_no
+from customer.actions.base import (
+    Action,
+    ActionResult,
+    format_action_error,
+    get_active_slots,
+    resolve_customer_no,
+)
 from customer.clients.finance_client import finance_client
 from customer.domain.state import DialogueState
 
 logger = logging.getLogger(__name__)
+
+_AMOUNT_RE = re.compile(r"^([+-]?\d+(?:\.\d+)?)\s*(亿|万|千|百)?$")
+_TERM_RE = re.compile(r"^(\d+)\s*(年|个月|月|期)?$")
+_AMOUNT_UNIT_MULTIPLIER = {
+    "亿": 100_000_000.0,
+    "万": 10_000.0,
+    "千": 1_000.0,
+    "百": 100.0,
+}
+
+
+def parse_loan_amount(raw: object) -> float:
+    """将口语化贷款金额（如 '10万元'、'50,000元'、'1.5万'）解析为数值（元）."""
+    if isinstance(raw, (int, float)):
+        value = float(raw)
+        if value <= 0:
+            raise ValueError("贷款金额必须大于 0")
+        return value
+
+    text = str(raw).strip().replace(",", "").replace("，", "")
+    text = re.sub(r"(?:人民币|CNY|RMB|元|块)+$", "", text, flags=re.IGNORECASE).strip()
+    match = _AMOUNT_RE.match(text)
+    if not match:
+        raise ValueError(f"无法解析贷款金额: {raw}")
+
+    num = float(match.group(1))
+    unit = match.group(2)
+    value = num * _AMOUNT_UNIT_MULTIPLIER.get(unit, 1.0)
+    if value <= 0:
+        raise ValueError("贷款金额必须大于 0")
+    return value
+
+
+def parse_loan_term(raw: object) -> int:
+    """将口语化贷款期限（如 '36期'、'12个月'、'2年'）解析为月数整数."""
+    if isinstance(raw, int) and not isinstance(raw, bool):
+        if raw <= 0:
+            raise ValueError("贷款期限必须大于 0")
+        return raw
+
+    text = str(raw).strip()
+    match = _TERM_RE.match(text)
+    if not match:
+        raise ValueError(f"无法解析贷款期限: {raw}")
+
+    num = int(match.group(1))
+    unit = match.group(2)
+    months = num * 12 if unit == "年" else num
+    if months <= 0:
+        raise ValueError("贷款期限必须大于 0")
+    return months
 
 
 class LoanApplicationAction(Action):
@@ -28,8 +86,8 @@ class LoanApplicationAction(Action):
             )
 
         try:
-            apply_amount = float(raw_amount)
-            loan_term = int(raw_term)
+            apply_amount = parse_loan_amount(raw_amount)
+            loan_term = parse_loan_term(raw_term)
         except (TypeError, ValueError):
             return ActionResult(
                 result={"reply": "贷款金额或期限格式有误，请提供有效的数字（例如金额 10000，期限 12 个月）。"}
@@ -64,5 +122,5 @@ class LoanApplicationAction(Action):
         except Exception as e:
             logger.error("提交贷款申请失败: %s", e)
             return ActionResult(
-                result={"reply": f"贷款申请提交失败，请核对授信额度与产品参数或联系人工客服。({e})"}
+                result={"reply": f"贷款申请提交失败：{format_action_error(e)}，请核对授信额度与产品参数或联系人工客服。"}
             )
