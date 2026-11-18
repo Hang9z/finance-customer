@@ -1,108 +1,175 @@
-"""
- 发送远程调用, 调用中台接口得到数据
-"""
+"""金融知识检索数据源 Provider 实现."""
 import asyncio
 import json
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from customer.config.config import Settings, settings
+from customer.clients.finance_client import finance_client
 from customer.domain.messages import UserMessage
 from customer.domain.state import DialogueState
-from customer.utils.httpx_client import httpx_client
+
+logger = logging.getLogger(__name__)
 
 
-# 定义结果
 @dataclass
 class KnowledgeChunk:
     content: str = ""
 
-# 创建基类
+
 class KnowledgeProvider(ABC):
-    provider_id: str=""
+    provider_id: str = ""
 
     @abstractmethod
-    async def execute(self, state:DialogueState,
-                      user_message:UserMessage) -> list[KnowledgeChunk]:
+    async def execute(
+        self,
+        state: DialogueState,
+        user_message: UserMessage,
+    ) -> list[KnowledgeChunk]:
         pass
 
-# 商品信息咨询
-class ApiProductProvider(KnowledgeProvider):
-    provider_id = "api.product"
 
-    async def execute(self, state:DialogueState,
-                      user_message:UserMessage) -> list[KnowledgeChunk]:
-        # 获取商品 id
-        product_id = state.shared.focused_object.id
+_FAQ_ENTRIES: list[tuple[tuple[str, ...], str]] = [
+    (
+        ("利率", "利息", "还款", "提前", "违约金", "等额", "贷款"),
+        "【贷款利率与还款规则】我行消费信用贷与分期贷支持等额本息、等额本金及先息后本等还款方式，具体执行利率结合客户信用评估在产品利率区间内浮动。"
+        "正常按期足额还款后可随时在手机银行申请提前结清；部分产品在放款 6 个月内提前结清可能收取剩余本金 1% 的手续费，具体以借款合同为准。",
+    ),
+    (
+        ("手续费", "转账", "跨行", "取现", "费率"),
+        "【转账与账户手续费】个人客户通过手机银行、网上银行办理境内本行及跨行实时转账暂免手续费；"
+        "柜面跨行汇款按金额分段计费，单笔最高不超过 50 元。借记卡境内 ATM 跨行取现每月前 3 笔免收手续费，第 4 笔起按 2 元/笔收取。",
+    ),
+    (
+        ("理财", "基金", "稳健", "风险", "收益", "赎回", "起购", "净值"),
+        "【理财与基金产品说明】我行理财产品按风险等级划分为 R1（低风险/谨慎型）至 R5（高风险/激进型）。"
+        "稳健投资可优先关注 R1/R2 等级固收类或现金管理类产品；理财产品为非保本浮动收益，过往业绩不代表未来表现。"
+        "开放式产品通常支持 T+1 工作日申购确认及赎回资金到账（快速赎回单日限额 1 万元）。",
+    ),
+    (
+        ("信用卡", "金卡", "白金", "年费", "权益", "免息期", "最低还款"),
+        "【信用卡等级与还款规则】金卡基础额度通常为 1 万至 5 万元，首年免年费，当年刷卡满 6 笔免次年年费；"
+        "白金卡基础额度通常为 5 万至 30 万元，享机场贵宾厅、道路救援及高额延误险等专属权益，主卡年费可通过积分或达标消费减免。"
+        "信用卡免息还款期最长 56 天，最低还款额通常为当期账单金额的 10%。",
+    ),
+    (
+        ("存款", "定期", "活期", "存期", "起存", "存单"),
+        "【存款产品说明】人民币整存整取定期存款 50 元起存，提供 3 个月、6 个月、1 年、2 年、3 年、5 年期；"
+        "大额存单 20 万元起存，支持按期付息及部分提前支取，提前支取部分按支取日挂牌活期利率计息。",
+    ),
+    (
+        ("挂失", "丢失", "盗刷", "冻结", "安全"),
+        "【卡片挂失与资金安全】发现卡片遗失或疑似盗刷，请立即通过智能客服、手机银行或致电 95555 办理紧急口头挂失，系统将即时止付账户。"
+        "口头挂失后请携带本人有效身份证件前往网点办理正式挂失或补换新卡。",
+    ),
+]
 
-        url = f"{settings.commerce_api_base_url}/products/{product_id}"
-        response = await httpx_client.get(url)
-        data = response.json().get("data", {})
-        chunk = json.dumps(data, ensure_ascii=False)
-        return [KnowledgeChunk(content=chunk)]
-
-# 订单信息咨询
-class ApiOrderProvider(KnowledgeProvider):
-    provider_id = "api.order"
-
-    async def execute(self, state:DialogueState,
-                      user_message:UserMessage) -> list[KnowledgeChunk]:
-        order_id = state.shared.focused_object.id
-        # 拼接远程调用路径
-        order_url = f"{settings.commerce_api_base_url}/orders/{order_id}"
-        logis_url = f"{settings.commerce_api_base_url}/orders/{order_id}/logistics"
-        # 远程调用并行实现
-        order_info, logis_info = await asyncio.gather(
-            httpx_client.get(order_url),
-            httpx_client.get(logis_url)
-        )
-
-        # list[KnowledgeChunk]
-        chunk = json.dumps({
-            "order_detail": order_info.json()["data"],
-            "logis_detail": logis_info.json()["data"]
-        }, ensure_ascii=False)
-        return [KnowledgeChunk(content=chunk)]
-
-#  faq
-## 查询固定问题和固定答案
-# 把这些问题和对应答案存储数据库里面，使用mysql，向量数据库
-# 根据问题到数据库找到匹配问题，返回问题对应答案
-class FAQProvider(KnowledgeProvider):
-    provider_id = 'faq.default'
-
-    async def execute(self, state: DialogueState,
-                      user_message: UserMessage) -> list[KnowledgeChunk]:
-        # TODO
-        return [KnowledgeChunk(content="未检索到相关问题")]
-
-
-# rag
-## 调用智库里面查询接口得到结果
-class RAGProvider(KnowledgeProvider):
-    provider_id = 'rag.default'
-
-    async def execute(self, state: DialogueState,
-                      user_message: UserMessage) -> list[KnowledgeChunk]:
-        # RAG知识库查询知识接口（TODO）
-        return [KnowledgeChunk(content="未检索到相关信息")]
+_RAG_ENTRIES: list[tuple[tuple[str, ...], str]] = [
+    (
+        ("贷款", "审批", "授信", "征信", "材料", "条件"),
+        "【信贷审批与合规规范】申请消费贷款需满足年满 22 至 60 周岁、信用记录良好且具备稳定收入来源。"
+        "申请前需先持有有效授信额度；贷款资金严禁用于购房、股票、期货等投资性或监管禁止领域，逾期将按合同计收罚息并报送人民银行征信系统。",
+    ),
+    (
+        ("风险", "测评", "合规", "反诈", "密码", "验证码"),
+        "【金融消费风险与反诈提示】首次购买理财产品前需完成风险承受能力评估（有效期 1 年），不得向客户销售高于其风险等级的产品。"
+        "我行客服人员绝不会索要您的银行卡密码、短信验证码或要求向所谓“安全账户”转账。",
+    ),
+    (
+        ("投诉", "工单", "时效", "人工", "客服"),
+        "【客服工单与投诉处理规范】提交投诉建议工单后，系统将生成唯一工单编号并由专席客服跟进核实，常规咨询与交易核查类工单在 24 小时内反馈进展，复杂争议将在 3 个工作日内给出处理方案。",
+    ),
+]
 
 
-# 金融产品知识检索 Provider（调用统一中台客户端）
+def _match_knowledge_entries(
+    query: str,
+    entries: list[tuple[tuple[str, ...], str]],
+    fallback_limit: int = 2,
+) -> list[KnowledgeChunk]:
+    """按关键词命中权重筛选知识条目."""
+    text = (query or "").strip()
+    scored: list[tuple[int, str]] = []
+    for keywords, content in entries:
+        score = sum(1 for kw in keywords if kw in text)
+        if score > 0:
+            scored.append((score, content))
+
+    if not scored:
+        return [KnowledgeChunk(content=content) for _, content in entries[:fallback_limit]]
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [KnowledgeChunk(content=content) for _, content in scored[:3]]
+
+
 class FinanceProductKnowledgeProvider(KnowledgeProvider):
+    """金融产品知识检索 Provider（调用统一金融中台客户端）."""
+
     provider_id = "api.finance_product"
 
-    async def execute(self, state: DialogueState,
-                      user_message: UserMessage) -> list[KnowledgeChunk]:
-        from customer.clients.finance_client import finance_client
+    async def execute(
+        self,
+        state: DialogueState,
+        user_message: UserMessage,
+    ) -> list[KnowledgeChunk]:
+        text = user_message.text or ""
+        focused = state.shared.focused_object
 
-        try:
-            loan_products = await finance_client.get_loan_products(page_size=5)
-            wealth_products = await finance_client.get_wealth_products(page_size=5)
-            content = json.dumps({
-                "loan_products": loan_products,
-                "wealth_products": wealth_products,
-            }, ensure_ascii=False)
-            return [KnowledgeChunk(content=content)]
-        except Exception as e:
-            return [KnowledgeChunk(content=f"获取金融产品信息失败: {e}")]
+        payload: dict[str, object] = {}
+
+        if focused and focused.id and focused.type in {"loan_product", "product"}:
+            try:
+                payload["focused_loan_product"] = await finance_client.get_loan_product_detail(focused.id)
+            except Exception as exc:
+                logger.warning("获取聚焦贷款产品详情失败 (%s): %s", focused.id, exc)
+
+        want_loan = any(kw in text for kw in ("贷", "借", "分期", "利息", "额度"))
+        want_wealth = any(kw in text for kw in ("理财", "基金", "稳健", "收益", "投资", "净值"))
+        fetch_both = not want_loan and not want_wealth
+
+        tasks = []
+        task_keys: list[str] = []
+        if want_loan or fetch_both:
+            tasks.append(finance_client.get_loan_products(page_size=8))
+            task_keys.append("loan_products")
+        if want_wealth or fetch_both:
+            tasks.append(finance_client.get_wealth_products(page_size=8))
+            task_keys.append("wealth_products")
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for key, res in zip(task_keys, results):
+            if isinstance(res, Exception):
+                logger.warning("获取中台 %s 失败: %s", key, res)
+            else:
+                payload[key] = res
+
+        if not payload:
+            return [KnowledgeChunk(content="暂时无法连接金融产品目录接口，请参考行内常规产品规则作答。")]
+
+        return [KnowledgeChunk(content=json.dumps(payload, ensure_ascii=False))]
+
+
+class FAQProvider(KnowledgeProvider):
+    """金融业务 FAQ 知识检索 Provider."""
+
+    provider_id = "faq.default"
+
+    async def execute(
+        self,
+        state: DialogueState,
+        user_message: UserMessage,
+    ) -> list[KnowledgeChunk]:
+        return _match_knowledge_entries(user_message.text, _FAQ_ENTRIES, fallback_limit=2)
+
+
+class RAGProvider(KnowledgeProvider):
+    """金融合规政策与业务指南检索 Provider."""
+
+    provider_id = "rag.default"
+
+    async def execute(
+        self,
+        state: DialogueState,
+        user_message: UserMessage,
+    ) -> list[KnowledgeChunk]:
+        return _match_knowledge_entries(user_message.text, _RAG_ENTRIES, fallback_limit=2)

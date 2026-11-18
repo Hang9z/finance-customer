@@ -4,7 +4,11 @@ from customer.handlers.chitchat.chitchat_handler import ChitChatHandler
 from customer.handlers.clarify.clarify_response import ClarifyResponse
 from customer.engine.dialogue_engine import DialogueEngine
 from customer.handlers.knowledge.handler import KnowledgeHandler
-from customer.handlers.knowledge.provider import ApiProductProvider, ApiOrderProvider, FAQProvider, RAGProvider
+from customer.handlers.knowledge.provider import (
+    FAQProvider,
+    FinanceProductKnowledgeProvider,
+    RAGProvider,
+)
 from customer.handlers.knowledge.registry import KnowledgeProviderRegistry
 from customer.handlers.knowledge.responder import KnowledgeResponder
 from customer.plan.turn_plan_validation import TurnPlanValidation
@@ -68,12 +72,11 @@ def build_engine() -> DialogueEngine:
         knowledge_responder=KnowledgeResponder(),
         knowledge_registry=KnowledgeProviderRegistry(
             provider_objects=[
-                ApiProductProvider(),
-                ApiOrderProvider(),
+                FinanceProductKnowledgeProvider(),
                 FAQProvider(),
-                RAGProvider()
+                RAGProvider(),
             ]
-        )
+        ),
     )
 
     return DialogueEngine(
