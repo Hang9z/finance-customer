@@ -19,6 +19,8 @@ class Action(ABC):
 @dataclass
 class ActionResult:
     result: dict[str, Any] = field(default_factory=dict)
+    success: bool = True
+    error: str | None = None
 
 
 

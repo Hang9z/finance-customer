@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from customer.actions.base import ActionResult
-from customer.actions.builder import registry_action
-from customer.actions.registry import ActionRegistry
+from customer.handlers.task.actions import ActionResult
+from customer.handlers.task.actions.builder import registry_action
+from customer.handlers.task.actions import ActionRegistry
 from customer.domain.messages import MessageType, UserMessage
 from customer.domain.state import DialogueState, TaskInstance
 from customer.engine.builder import build_engine
@@ -48,11 +48,12 @@ class TestRefactoringIntegrity(unittest.TestCase):
         self.assertEqual(errors, [], f"Found legacy import references: {errors}")
 
     def test_02_directory_structure_constraints(self):
-        """验证目录结构严格符合 R1、R2、R3 约束。"""
+        """验证目录结构严格符合规范：包含中台客户端、impl实现包与对称Handler。"""
         self.assertTrue(Path("customer/engine").is_dir(), "customer/engine must exist")
         self.assertFalse(Path("customer/core").exists(), "customer/core must NOT exist")
-        self.assertTrue(Path("customer/actions").is_dir(), "customer/actions must exist")
-        self.assertTrue(Path("customer/actions/service").is_dir(), "customer/actions/service must exist")
+        self.assertTrue(Path("customer/clients").is_dir(), "customer/clients must exist")
+        self.assertTrue(Path("customer/handlers/task/actions").is_dir(), "customer/handlers/task/actions must exist")
+        self.assertTrue(Path("customer/handlers/task/actions/impl").is_dir(), "customer/handlers/task/actions/impl must exist")
         self.assertTrue(Path("customer/handlers/task").is_dir(), "customer/handlers/task must exist")
         self.assertTrue(Path("customer/handlers/chitchat").is_dir(), "customer/handlers/chitchat must exist")
         self.assertTrue(Path("customer/handlers/clarify").is_dir(), "customer/handlers/clarify must exist")

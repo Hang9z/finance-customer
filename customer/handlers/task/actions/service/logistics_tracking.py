@@ -3,7 +3,7 @@
 """
 from customer.config import settings
 from customer.domain.state import DialogueState
-from customer.actions.base import Action, ActionResult
+from customer.handlers.task.actions.base import Action, ActionResult
 from customer.utils.httpx_client import httpx_client
 
 

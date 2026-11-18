@@ -2,8 +2,8 @@
 action 调用远程服务入口
 """
 from customer.domain.state import DialogueState
-from customer.actions.base import Action, ActionResult
-from customer.actions.registry import ActionRegistry
+from customer.handlers.task.actions.base import ActionResult
+from customer.handlers.task.actions.registry import ActionRegistry
 
 
 class ActionRunner:

@@ -1,9 +1,6 @@
-from sqlalchemy import true
-
 from customer.domain.messages import UserMessage, BotMessage
-from customer.domain.state import DialogueState, SharedState
-from customer.actions.action_runner import ActionRunner
-from customer.actions.base import Action
+from customer.domain.state import DialogueState
+from customer.handlers.task.actions import ActionRunner
 from customer.handlers.task.flow.links import FlowStepLink, ConditionalLink, FallbackLink
 from customer.handlers.task.flow.models import FlowCatalog, Flow
 from customer.handlers.task.flow.steps import FlowStep, StartFlowStep, ResponseFlowStep, CollectSlotStep, ActionFlowStep, \

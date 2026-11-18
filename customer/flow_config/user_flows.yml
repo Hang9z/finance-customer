@@ -44,6 +44,62 @@ slots:
     label: 推荐结果
     description: 相似商品推荐结果的展示文本
 
+  # 金融领域槽位
+  account_no:
+    type: text
+    label: 银行账户/卡号
+    description: 客户的银行账户或卡号
+
+  card_no:
+    type: text
+    label: 银行卡/信用卡号
+    description: 需要挂失或查询的卡号
+
+  available_balance:
+    type: text
+    label: 可用余额
+    description: 账户当前可用余额
+
+  frozen_amount:
+    type: text
+    label: 冻结金额
+    description: 账户当前冻结金额
+
+  loan_amount:
+    type: text
+    label: 贷款金额
+    description: 申请贷款的金额
+
+  loan_term:
+    type: text
+    label: 贷款期限
+    description: 贷款还款期数（月）
+
+  application_no:
+    type: text
+    label: 申请编号
+    description: 贷款申请唯一编号
+
+  loss_reason:
+    type: text
+    label: 挂失原因
+    description: 信用卡或银行卡挂失的原因
+
+  ticket_category:
+    type: text
+    label: 工单类型
+    description: 投诉工单类型
+
+  ticket_description:
+    type: text
+    label: 问题描述
+    description: 投诉或咨询问题的详细描述
+
+  ticket_no:
+    type: text
+    label: 工单编号
+    description: 客服工单编号
+
 flows:
   onboarding:
     name: 欢迎引导
@@ -204,6 +260,178 @@ flows:
         type: response
         template:
           text: "好的，我来为你转接人工客服，请稍等。"
+        next: end
+
+      - id: end
+        type: end
+        next: []
+
+  # 金融任务型对话流程
+  account_balance_query:
+    name: 账户余额查询
+    description: 帮用户查询指定银行账户或银行卡的可用余额、冻结金额及状态。
+    steps:
+      - id: start
+        type: start
+        next: ask_account_no
+
+      - id: ask_account_no
+        type: collect
+        slot_name: account_no
+        template:
+          text: "请提供您需要查询余额的银行卡号或账户号。"
+        next: lookup_balance
+
+      - id: lookup_balance
+        type: action
+        action: action_query_account_balance
+        next: show_balance
+
+      - id: show_balance
+        type: response
+        template:
+          text: "{{ slots.reply or '已为您完成余额查询。' }}"
+        next: end
+
+      - id: end
+        type: end
+        next: []
+
+  transaction_history_query:
+    name: 交易明细查询
+    description: 帮用户查询指定账户的历史交易流水明细。
+    steps:
+      - id: start
+        type: start
+        next: ask_account_no
+
+      - id: ask_account_no
+        type: collect
+        slot_name: account_no
+        template:
+          text: "请提供您需要查询交易明细的银行卡号或账户号。"
+        next: lookup_transactions
+
+      - id: lookup_transactions
+        type: action
+        action: action_query_transactions
+        next: show_transactions
+
+      - id: show_transactions
+        type: response
+        template:
+          text: "{{ slots.reply or '已为您查询交易记录。' }}"
+        next: end
+
+      - id: end
+        type: end
+        next: []
+
+  loan_application:
+    name: 贷款申请
+    description: 引导用户提交消费贷款申请，收集贷款金额、期限等信息并提交中台审批。
+    steps:
+      - id: start
+        type: start
+        next: ask_amount
+
+      - id: ask_amount
+        type: collect
+        slot_name: loan_amount
+        template:
+          text: "请问您本次计划申请的贷款金额是多少元？"
+        next: ask_term
+
+      - id: ask_term
+        type: collect
+        slot_name: loan_term
+        template:
+          text: "请问您期望的贷款期限是几个月？（支持 6、12、24、36 期）"
+        next: submit_loan
+
+      - id: submit_loan
+        type: action
+        action: action_apply_loan
+        next: show_loan_result
+
+      - id: show_loan_result
+        type: response
+        template:
+          text: "{{ slots.reply or '贷款申请已成功提交。' }}"
+        next: end
+
+      - id: end
+        type: end
+        next: []
+
+  card_loss_report:
+    name: 信用卡挂失
+    description: 帮用户紧急挂失信用卡或银行卡，冻结账户防止资金损失。
+    steps:
+      - id: start
+        type: start
+        next: ask_card_no
+
+      - id: ask_card_no
+        type: collect
+        slot_name: card_no
+        template:
+          text: "请提供需要紧急挂失的银行卡号或信用卡号。"
+        next: ask_reason
+
+      - id: ask_reason
+        type: collect
+        slot_name: loss_reason
+        template:
+          text: "请问挂失的主要原因是什么？（例如：卡片丢失、被盗、疑似被盗刷等）"
+        next: submit_loss
+
+      - id: submit_loss
+        type: action
+        action: action_report_card_loss
+        next: show_loss_result
+
+      - id: show_loss_result
+        type: response
+        template:
+          text: "{{ slots.reply or '卡片已成功办理紧急挂失并冻结。' }}"
+        next: end
+
+      - id: end
+        type: end
+        next: []
+
+  complaint_ticket:
+    name: 投诉工单
+    description: 收集客户遇到的问题并创建客服投诉处理工单。
+    steps:
+      - id: start
+        type: start
+        next: ask_category
+
+      - id: ask_category
+        type: collect
+        slot_name: ticket_category
+        template:
+          text: "请问您要投诉或反馈的问题类型是什么？（如：服务态度、转账未到账、扣费异常、系统故障等）"
+        next: ask_desc
+
+      - id: ask_desc
+        type: collect
+        slot_name: ticket_description
+        template:
+          text: "请详细描述您遇到的问题经过或诉求。"
+        next: submit_ticket
+
+      - id: submit_ticket
+        type: action
+        action: action_create_complaint_ticket
+        next: show_ticket_result
+
+      - id: show_ticket_result
+        type: response
+        template:
+          text: "{{ slots.reply or '您的投诉工单已创建成功，我们将尽快处理。' }}"
         next: end
 
       - id: end

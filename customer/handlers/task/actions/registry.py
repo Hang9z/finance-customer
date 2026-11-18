@@ -1,7 +1,7 @@
 """
  把远程方法注册到字典中
 """
-from customer.actions.base import Action
+from customer.handlers.task.actions.base import Action
 
 
 class ActionRegistry:

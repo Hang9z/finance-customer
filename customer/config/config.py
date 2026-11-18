@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     database_url: str = "mysql+aiomysql://root:123456@127.0.0.1:3306/customer_service?charset=utf8mb4"
     # 商城 API
     commerce_api_base_url: str = "http://127.0.0.1:18081"
+    # 金融中台 API
+    finance_api_base_url: str = "http://127.0.0.1:8000/api/v1"
+    finance_default_customer_no: str = "CUST00000001"
     # 服务器
     app_host: str = "0.0.0.0"
     app_port: int = 18082

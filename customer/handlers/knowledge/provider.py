@@ -86,3 +86,23 @@ class RAGProvider(KnowledgeProvider):
                       user_message: UserMessage) -> list[KnowledgeChunk]:
         # RAG知识库查询知识接口（TODO）
         return [KnowledgeChunk(content="未检索到相关信息")]
+
+
+# 金融产品知识检索 Provider（调用统一中台客户端）
+class FinanceProductKnowledgeProvider(KnowledgeProvider):
+    provider_id = "api.finance_product"
+
+    async def execute(self, state: DialogueState,
+                      user_message: UserMessage) -> list[KnowledgeChunk]:
+        from customer.clients.finance_client import finance_client
+
+        try:
+            loan_products = await finance_client.get_loan_products(page_size=5)
+            wealth_products = await finance_client.get_wealth_products(page_size=5)
+            content = json.dumps({
+                "loan_products": loan_products,
+                "wealth_products": wealth_products,
+            }, ensure_ascii=False)
+            return [KnowledgeChunk(content=content)]
+        except Exception as e:
+            return [KnowledgeChunk(content=f"获取金融产品信息失败: {e}")]
