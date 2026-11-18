@@ -22,12 +22,14 @@ class FinanceClient:
         base_url: str | None = None,
         default_customer_no: str | None = None,
         default_channel_code: str = "MOBILE_BANK",
+        default_operator_no: str = "EMP000006",
     ):
         self.base_url = (base_url or settings.finance_api_base_url).rstrip("/")
         self.default_customer_no = default_customer_no or getattr(
-            settings, "finance_default_customer_no", "CUST00000001"
+            settings, "finance_default_customer_no", "CUS00000001"
         )
         self.default_channel_code = default_channel_code
+        self.default_operator_no = default_operator_no
 
     @staticmethod
     def _http():
@@ -39,14 +41,18 @@ class FinanceClient:
         self,
         customer_no: str | None = None,
         channel_code: str | None = None,
+        operator_no: str | None = None,
     ) -> dict[str, str]:
         token = customer_no or self.default_customer_no
-        return {
+        headers = {
             "Authorization": f"Bearer {token}",
             "X-Request-Id": uuid.uuid4().hex,
             "X-Channel-Code": channel_code or self.default_channel_code,
             "Content-Type": "application/json",
         }
+        if operator_no:
+            headers["X-Operator-No"] = operator_no
+        return headers
 
     # ==================== 1. 账户与交易 ====================
 
@@ -197,7 +203,11 @@ class FinanceClient:
             "loan_purpose": loan_purpose or "consume",
             "materials": [],
         }
-        headers = self._build_headers(resolved_customer, channel_code=channel_code)
+        headers = self._build_headers(
+            resolved_customer,
+            channel_code=channel_code,
+            operator_no=self.default_operator_no,
+        )
         response = await self._http().post(url, json=payload, headers=headers)
         response.raise_for_status()
         return response.json().get("data", {})
@@ -230,7 +240,11 @@ class FinanceClient:
             "related_id": None,
         }
 
-        headers = self._build_headers(resolved_customer, channel_code=channel_code)
+        headers = self._build_headers(
+            resolved_customer,
+            channel_code=channel_code,
+            operator_no=self.default_operator_no,
+        )
         response = await self._http().post(url, json=payload, headers=headers)
         response.raise_for_status()
         return response.json().get("data", {})

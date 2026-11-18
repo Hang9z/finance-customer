@@ -30,3 +30,7 @@ class DialogueService:
 
         # 5 返回engine处理结果
         return process_result
+
+    async def get_history_data_sender_id(self, sender_id: str) -> DialogueState:
+        """根据用户标识加载历史对话状态."""
+        return await self.repository.load_state(sender_id)

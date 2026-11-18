@@ -9,6 +9,7 @@ from customer.domain.state import DialogueState
 logger = logging.getLogger(__name__)
 
 _STATUS_LABELS = {
+    "normal": "正常",
     "active": "正常",
     "frozen": "已冻结",
     "loss_reported": "已挂失",

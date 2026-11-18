@@ -7,7 +7,7 @@ httpx_client: AsyncClient | None = None
 # 初始化方法
 def init_httpx_client():
     global httpx_client
-    httpx_client = AsyncClient(timeout=10.0)
+    httpx_client = AsyncClient(timeout=10.0, trust_env=False)
 
 # 关闭的方法
 async def close_httpx_client():

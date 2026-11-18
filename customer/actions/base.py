@@ -33,6 +33,6 @@ def resolve_customer_no(
     customer_no = active_slots.get("customer_no")
     if customer_no:
         return str(customer_no)
-    if state.sender_id and str(state.sender_id).startswith("CUST"):
+    if state.sender_id and str(state.sender_id).startswith(("CUS", "CUST")):
         return str(state.sender_id)
     return None

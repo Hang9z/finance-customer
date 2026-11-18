@@ -276,9 +276,11 @@ class TestFinanceClientContract(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(data["ticket_no"], "TKT0001")
         sent_payload = mock_http.post.await_args.kwargs["json"]
+        sent_headers = mock_http.post.await_args.kwargs["headers"]
         self.assertEqual(sent_payload["ticket_type"], "转账异常")
         self.assertEqual(sent_payload["related_type"], "none")
         self.assertIn("TXN001", sent_payload["ticket_content"])
+        self.assertEqual(sent_headers["X-Operator-No"], "EMP000006")
 
 
 if __name__ == "__main__":
