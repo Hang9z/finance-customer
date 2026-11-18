@@ -56,13 +56,13 @@ class ClarifyResponse:
 
     def build_reason(self, reason: ClarifyReason, state: DialogueState) -> str:
         reason_map = {
-            ClarifyReason.MULTIPLE_TRACKS: "您的问题同时涉及多个业务需求，我一次只能处理一个，请问您想先处理哪一个？",
-            ClarifyReason.MISSING_TRACK: "未能明确理解您的需求，请问您是想查询订单状态、查询物流、咨询商品还是申请退款？",
-            ClarifyReason.MISSING_TASK_COMMANDS: "未识别到具体的任务操作指令，请详细说明您想办理的业务。",
-            ClarifyReason.INVALID_TASK_COMMAND: "抱歉，无法执行该任务指令或未找到对应流程，请重新确认您的诉求。",
-            ClarifyReason.MISSING_KNOWLEDGE_INTENT: "未能匹配到相关的帮助内容，请尝试更详细地描述您的问题。",
-            ClarifyReason.UNKNOWN_KNOWLEDGE_INTENT: "未能找到相关的知识解答，请换个方式提问。",
-            ClarifyReason.MISSING_FOCUSED_OBJECT: "当前操作需要指定商品或订单，请先提供对应的订单号或商品卡片。",
-            ClarifyReason.OBJECT_REQUIRES_INTENT: "已收到您发送的卡片，请问需要针对它办理什么业务呢？",
+            ClarifyReason.MULTIPLE_TRACKS: "您的问题同时涉及多个金融业务或咨询需求，我一次只能优先处理一个，请问您想先办理哪一项？",
+            ClarifyReason.MISSING_TRACK: "未能明确理解您的需求，请问您是想查询账户余额、查询交易明细、办理信用卡挂失、申请消费贷款、提交投诉工单，还是咨询金融产品？",
+            ClarifyReason.MISSING_TASK_COMMANDS: "未识别到具体的业务操作指令，请详细说明您想办理的金融业务。",
+            ClarifyReason.INVALID_TASK_COMMAND: "抱歉，无法执行该业务指令或未找到对应流程，请重新确认您的诉求。",
+            ClarifyReason.MISSING_KNOWLEDGE_INTENT: "未能匹配到相关的金融知识内容，请尝试更详细地描述您想了解的产品或规则。",
+            ClarifyReason.UNKNOWN_KNOWLEDGE_INTENT: "未能找到相关的金融业务解答，请换个方式提问或转接人工客服。",
+            ClarifyReason.MISSING_FOCUSED_OBJECT: "当前操作需要指定业务对象，请先提供对应的银行卡/账户号、贷款产品或工单卡片。",
+            ClarifyReason.OBJECT_REQUIRES_INTENT: "已收到您发送的业务卡片，请问需要针对它办理什么金融业务（如查余额、查流水、挂失或咨询产品详情）？",
         }
-        return reason_map.get(reason, "抱歉，未能完全理解您的需求，请问有什么可以帮您的吗？")
+        return reason_map.get(reason, "抱歉，未能完全理解您的需求，请问有什么金融业务可以帮您？")

@@ -105,17 +105,17 @@ if __name__ == "__main__":
         planner = TurnPlanner()
 
         # 准备测试 State
-        state = DialogueState(sender_id="u1001")
+        state = DialogueState(sender_id="CUST00000001")
         state.shared.sessions.append(Session(session_id="s1001", started_at=0, last_activity_at=0))
 
-        # 测试用例 1: 业务任务意图 (物流查询)
+        # 测试用例 1: 业务任务意图 (账户余额查询)
         msg1 = UserMessage(
-            sender_id="u1001",
+            sender_id="CUST00000001",
             message_id="m1",
             type=MessageType.TEXT,
-            text="我的订单什么时候发货？订单号是1101"
+            text="帮我查一下账户 ACC0000000001 的余额"
         )
-        print("\n[测试用例 1 - 业务任务]")
+        print("\n[测试用例 1 - 账户余额查询]")
         print("用户输入:", msg1.text)
         plan1 = await planner.plan(state, msg1, flow_catalog)
         print("LLM 规划结果:")
@@ -125,7 +125,7 @@ if __name__ == "__main__":
 
         # 测试用例 2: 闲聊意图
         msg2 = UserMessage(
-            sender_id="u1001",
+            sender_id="CUST00000001",
             message_id="m2",
             type=MessageType.TEXT,
             text="你好，今天天气真不错"
@@ -138,14 +138,14 @@ if __name__ == "__main__":
         print(f"  knowledge: {plan2.knowledge}")
         print(f"  chitchat: {plan2.chitchat}")
 
-        # 测试用例 3: 业务任务意图 (退款)
+        # 测试用例 3: 业务任务意图 (贷款申请)
         msg3 = UserMessage(
-            sender_id="u1001",
+            sender_id="CUST00000001",
             message_id="m3",
             type=MessageType.TEXT,
-            text="我不想要这个商品了，想申请退款"
+            text="我想申请消费贷款"
         )
-        print("\n[测试用例 3 - 申请退款]")
+        print("\n[测试用例 3 - 贷款申请]")
         print("用户输入:", msg3.text)
         plan3 = await planner.plan(state, msg3, flow_catalog)
         print("LLM 规划结果:")
