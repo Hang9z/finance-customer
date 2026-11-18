@@ -3,9 +3,9 @@ import importlib
 import inspect
 import pkgutil
 
-import customer.handlers.task.actions.impl as impl_pkg
-from customer.handlers.task.actions.base import Action
-from customer.handlers.task.actions.registry import ActionRegistry
+import customer.actions.impl as impl_pkg
+from customer.actions.registry import ActionRegistry
+from customer.actions.base import Action
 
 
 def registry_action(registry: ActionRegistry):

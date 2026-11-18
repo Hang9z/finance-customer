@@ -9,9 +9,9 @@ from customer.handlers.knowledge.registry import KnowledgeProviderRegistry
 from customer.handlers.knowledge.responder import KnowledgeResponder
 from customer.plan.turn_plan_validation import TurnPlanValidation
 from customer.plan.turn_planner import TurnPlanner
-from customer.handlers.task.actions import ActionRunner
-from customer.handlers.task.actions.builder import registry_action
-from customer.handlers.task.actions import ActionRegistry
+from customer.actions.action_runner import ActionRunner
+from customer.actions.builder import registry_action
+from customer.actions.registry import ActionRegistry
 from customer.handlers.task.command.command_executor import CommandExecutor
 from customer.handlers.task.flow.flow_executor import FlowExecutor
 from customer.handlers.task.flow.loader import FlowLoader

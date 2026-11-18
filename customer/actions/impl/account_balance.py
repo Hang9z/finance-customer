@@ -2,7 +2,7 @@
 import logging
 from customer.clients.finance_client import finance_client
 from customer.domain.state import DialogueState
-from customer.handlers.task.actions.base import Action, ActionResult
+from customer.actions.base import Action, ActionResult
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +19,6 @@ class AccountBalanceQueryAction(Action):
 
         if not account_no:
             return ActionResult(
-                success=False,
-                error="缺少账户号参数",
                 result={"reply": "未获取到需要查询的银行卡号或账户号。"}
             )
 
@@ -33,7 +31,6 @@ class AccountBalanceQueryAction(Action):
             status = data.get("account_status", "active")
 
             return ActionResult(
-                success=True,
                 result={
                     "account_no": account_no,
                     "balance": balance,
@@ -47,7 +44,5 @@ class AccountBalanceQueryAction(Action):
         except Exception as e:
             logger.error("查询账户余额失败: %s", e)
             return ActionResult(
-                success=False,
-                error=str(e),
                 result={"reply": f"查询账户余额失败，请稍后重试或核对账号是否正确。({e})"}
             )

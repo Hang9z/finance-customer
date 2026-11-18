@@ -1,6 +1,4 @@
-"""
- 定义数据模型
-"""
+"""定义数据模型."""
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
@@ -19,8 +17,3 @@ class Action(ABC):
 @dataclass
 class ActionResult:
     result: dict[str, Any] = field(default_factory=dict)
-    success: bool = True
-    error: str | None = None
-
-
-

@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from customer.handlers.task.actions import ActionResult
-from customer.handlers.task.actions.builder import registry_action
-from customer.handlers.task.actions import ActionRegistry
-from customer.domain.messages import MessageType, UserMessage
+from customer.actions.base import ActionResult
+from customer.actions.builder import registry_action
+from customer.actions.registry import ActionRegistry
+from customer.domain.messages import BotMessage, MessageType, UserMessage
 from customer.domain.state import DialogueState, TaskInstance
 from customer.engine.builder import build_engine
 from customer.handlers.task.flow.loader import FlowLoader
@@ -51,9 +51,11 @@ class TestRefactoringIntegrity(unittest.TestCase):
         """验证目录结构严格符合规范：包含中台客户端、impl实现包与对称Handler。"""
         self.assertTrue(Path("customer/engine").is_dir(), "customer/engine must exist")
         self.assertFalse(Path("customer/core").exists(), "customer/core must NOT exist")
+        self.assertTrue(Path("customer/actions").is_dir(), "customer/actions must exist")
+        self.assertTrue(Path("customer/actions/impl").is_dir(), "customer/actions/impl must exist")
+        self.assertFalse(Path("customer/actions/service").exists(), "customer/actions/service must NOT exist")
+        self.assertFalse(Path("customer/handlers/task/actions").exists(), "customer/handlers/task/actions must NOT exist")
         self.assertTrue(Path("customer/clients").is_dir(), "customer/clients must exist")
-        self.assertTrue(Path("customer/handlers/task/actions").is_dir(), "customer/handlers/task/actions must exist")
-        self.assertTrue(Path("customer/handlers/task/actions/impl").is_dir(), "customer/handlers/task/actions/impl must exist")
         self.assertTrue(Path("customer/handlers/task").is_dir(), "customer/handlers/task must exist")
         self.assertTrue(Path("customer/handlers/chitchat").is_dir(), "customer/handlers/chitchat must exist")
         self.assertTrue(Path("customer/handlers/clarify").is_dir(), "customer/handlers/clarify must exist")
@@ -81,6 +83,7 @@ class TestRefactoringIntegrity(unittest.TestCase):
         """验证 ActionRegistry 通过 actions.builder 自动扫描注册动作。"""
         reg = ActionRegistry()
         registry_action(reg)
+        self.assertIn("action_query_account_balance", reg.actions)
         self.assertIn("action_lookup_logistics", reg.actions)
         self.assertIn("action_lookup_order_status", reg.actions)
 
