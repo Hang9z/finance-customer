@@ -2,7 +2,7 @@ from customer.domain.messages import UserMessage, BotMessage
 from customer.domain.state import DialogueState
 from customer.actions.action_runner import ActionRunner
 from customer.handlers.task.flow.links import FlowStepLink, ConditionalLink, FallbackLink
-from customer.handlers.task.flow.models import FlowCatalog, Flow
+from customer.handlers.task.flow.models import FlowCatalog, Flow, OBJECT_TYPE_SLOT_CANDIDATES
 from customer.handlers.task.flow.steps import FlowStep, StartFlowStep, ResponseFlowStep, CollectSlotStep, ActionFlowStep, \
     EndFlowStep
 from customer.handlers.task.response.task_response_render import ResponseRender
@@ -145,22 +145,12 @@ class FlowExecutor:
         return False
 
     def get_slot_data_from_object_message(self, step: CollectSlotStep, state: DialogueState):
-        # 对象消息放到 active 中
-        if not state.shared.focused_object:
+        """从当前聚焦对象消息中自动提取匹配的槽位值."""
+        focused = state.shared.focused_object
+        if not focused or not focused.id:
             return
 
-        # 两种对象消息: 订单 order 和商品 product
-        # type = order
-        if step.slot_name == 'order_number' and state.shared.focused_object.type == 'order':
-            order_number = state.shared.focused_object.id
-            # 放入 active 中
-            state.tasks.active.slots.update({'order_number': order_number})
-            return
-
-        # type = product
-        if step.slot_name == 'product_id' and state.shared.focused_object.type == 'product':
-            product_id = state.shared.focused_object.id
-            # 放入 active 中
-            state.tasks.active.slots.update({'product_id': product_id})
-            return
+        candidates = OBJECT_TYPE_SLOT_CANDIDATES.get(focused.type, ())
+        if step.slot_name in candidates:
+            state.tasks.active.slots[step.slot_name] = focused.id
 

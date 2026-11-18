@@ -1,6 +1,18 @@
 from dataclasses import dataclass, field
 from customer.handlers.task.flow.steps import FlowStep, StartFlowStep
 
+# 前端卡片/聚焦对象类型到流程槽位候选列表的统一映射
+OBJECT_TYPE_SLOT_CANDIDATES: dict[str, tuple[str, ...]] = {
+    "account": ("account_no", "card_no"),
+    "card": ("card_no", "account_no"),
+    "loan_product": ("product_code",),
+    "wealth_product": ("product_code",),
+    "transaction": ("related_no",),
+    "ticket": ("ticket_no", "related_no"),
+    "order": ("order_number",),
+    "product": ("product_id", "product_code"),
+}
+
 @dataclass
 class FlowSlot:
     name: str

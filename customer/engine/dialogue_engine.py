@@ -14,7 +14,7 @@ from customer.plan.turn_plan import TurnPlan, TurnPlanValidationResult, ClarifyR
 from customer.plan.turn_plan_validation import TurnPlanValidation
 from customer.plan.turn_planner import TurnPlanner
 from customer.handlers.task.flow.loader import FlowLoader
-from customer.handlers.task.flow.models import FlowCatalog
+from customer.handlers.task.flow.models import FlowCatalog, OBJECT_TYPE_SLOT_CANDIDATES
 from customer.handlers.task.flow.steps import FlowStep, CollectSlotStep
 from customer.handlers.task.task_handler import TaskHandler
 
@@ -164,57 +164,54 @@ class DialogueEngine:
             )
 
             # 判断当前对象消息是否可以匹配活跃任务槽位
-            if self._is_can_fit_slots(state):
-                # 获取匹配的槽位名称 (例如: order -> order_number, product -> product_id)
-                slot_name = "order_number" if user_message.object.type == "order" else "product_id"
-                # 创建 commands
+            slot_name = self._resolve_fit_slot(state)
+            if slot_name:
                 command = SetSlotsCommand(
                     command="set_slots",
                     slots={slot_name: user_message.object.id}
                 )
-
-                # 执行任务
                 return await self.task_handler.handle(
                     commands=[command],
                     state=state,
                     user_message=user_message
                 )
 
-            else:
-                # 澄清回复
-                return await self.clarify_response.clarify_response(
-                    reason=ClarifyReason.OBJECT_REQUIRES_INTENT,
-                    state=state,
-                    user_message=user_message
-                )
+            return await self.clarify_response.clarify_response(
+                reason=ClarifyReason.OBJECT_REQUIRES_INTENT,
+                state=state,
+                user_message=user_message
+            )
 
         return []
 
     def _is_can_fit_slots(self, state: DialogueState) -> bool:
-        """
-        判断当前对象消息是否可以匹配活跃任务所需的槽位
-        """
+        """判断当前对象消息是否可以匹配活跃任务所需的槽位."""
+        return self._resolve_fit_slot(state) is not None
+
+    def _resolve_fit_slot(self, state: DialogueState) -> str | None:
+        """根据聚焦对象类型与当前任务上下文匹配待填充槽位名."""
         if not state.tasks.active or not state.shared.focused_object:
-            return False
+            return None
 
         obj_type = state.shared.focused_object.type
+        candidates = OBJECT_TYPE_SLOT_CANDIDATES.get(obj_type, ())
+        if not candidates:
+            return None
+
         flow_catalog = self.task_handler.flow_catalog
         flow = flow_catalog.get_flow_by_id(state.tasks.active.flow_id)
 
-        # 1. 检查当前步骤是否为等待收集该槽位的 CollectSlotStep 且槽位未填
+        # 1. 优先检查当前等待收集的 CollectSlotStep
         step = flow.get_step_by_id(state.tasks.active.step_id)
-        if isinstance(step, CollectSlotStep):
-            if step.slot_name == "order_number" and obj_type == "order":
-                return state.tasks.active.slots.get("order_number") is None
-            if step.slot_name == "product_id" and obj_type == "product":
-                return state.tasks.active.slots.get("product_id") is None
+        if isinstance(step, CollectSlotStep) and step.slot_name in candidates:
+            if state.tasks.active.slots.get(step.slot_name) is None:
+                return step.slot_name
 
-        # 2. 检查流程全部槽位中是否存在对应类型且尚未填写的槽位
-        target_slot = "order_number" if obj_type == "order" else "product_id" if obj_type == "product" else None
-        if target_slot:
-            flow_slot_names = [s.name for s in flow.slots]
-            if target_slot in flow_slot_names and state.tasks.active.slots.get(target_slot) is None:
-                return True
+        # 2. 检查流程全部 collect 槽位中首个匹配且尚未填写的槽位
+        flow_slot_names = {s.name for s in flow.slots}
+        for slot_name in candidates:
+            if slot_name in flow_slot_names and state.tasks.active.slots.get(slot_name) is None:
+                return slot_name
 
-        return False
+        return None
 
