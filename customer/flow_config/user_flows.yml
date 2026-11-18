@@ -1,109 +1,156 @@
+# ==============================================================================
+# 金融智能客服业务流程定义配置文件 (user_flows.yml)
+# ==============================================================================
+
 slots:
-  order_number:
-    type: text
-    label: 订单号
-    description: 用户的订单号
-
-  order_status:
-    type: text
-    label: 订单状态
-    description: 订单当前状态
-
-  order_summary:
-    type: text
-    label: 订单摘要
-    description: 订单摘要信息
-
-  tracking_number:
-    type: text
-    label: 物流单号
-    description: 物流单号
-
-  logistics_company:
-    type: text
-    label: 物流公司
-    description: 物流公司名称
-
-  logistics_status:
-    type: text
-    label: 物流进度
-    description: 物流当前进度
-
-  product_id:
-    type: text
-    label: 商品ID
-    description: 当前咨询商品的唯一标识
-
-  refund_reason:
-    type: text
-    label: 退款原因
-    description: 申请退款的原因
-
-  recommendation_summary:
-    type: text
-    label: 推荐结果
-    description: 相似商品推荐结果的展示文本
-
-  # 金融领域槽位
+  # ============================================================================
+  # 1. 金融业务核心槽位
+  # ============================================================================
   account_no:
     type: text
     label: 银行账户/卡号
-    description: 客户的银行账户或卡号
+    description: 客户的银行账户或银行卡号
 
   card_no:
     type: text
     label: 银行卡/信用卡号
-    description: 需要挂失或查询的卡号
+    description: 需要办理挂失或查询的银行卡或信用卡卡号
 
   available_balance:
     type: text
     label: 可用余额
-    description: 账户当前可用余额
+    description: 账户当前活期可用余额
 
   frozen_amount:
     type: text
     label: 冻结金额
-    description: 账户当前冻结金额
+    description: 账户当前被冻结金额
+
+  currency:
+    type: text
+    label: 货币币种
+    description: 账户币种代码（如 CNY）
+
+  start_date:
+    type: text
+    label: 交易起始日期
+    description: 查询交易明细的起始日期（格式：YYYY-MM-DD）
+
+  end_date:
+    type: text
+    label: 交易截止日期
+    description: 查询交易明细的截止日期（格式：YYYY-MM-DD）
+
+  product_code:
+    type: text
+    label: 金融产品代码
+    description: 申请的贷款产品代码或金融理财产品代码
 
   loan_amount:
     type: text
     label: 贷款金额
-    description: 申请贷款的金额
+    description: 客户申请的消费贷款金额（元）
 
   loan_term:
     type: text
     label: 贷款期限
-    description: 贷款还款期数（月）
+    description: 申请贷款的分期还款期数（月，支持 6、12、24、36 期）
+
+  loan_purpose:
+    type: text
+    label: 贷款用途
+    description: 贷款资金使用用途（如日常消费、装修、购车等）
 
   application_no:
     type: text
-    label: 申请编号
-    description: 贷款申请唯一编号
+    label: 贷款申请编号
+    description: 中台审批返回的贷款进件申请唯一编号
 
   loss_reason:
     type: text
     label: 挂失原因
-    description: 信用卡或银行卡挂失的原因
+    description: 信用卡或银行卡办理挂失的原因（如卡片丢失、被盗、疑似盗刷等）
 
   ticket_category:
     type: text
     label: 工单类型
-    description: 投诉工单类型
+    description: 投诉工单类型（如服务态度、转账未到账、扣费异常、系统故障等）
+
+  complaint_category:
+    type: text
+    label: 投诉分类
+    description: 客户投诉的具体业务分类
 
   ticket_description:
     type: text
     label: 问题描述
-    description: 投诉或咨询问题的详细描述
+    description: 投诉或咨询问题的详细文字描述
+
+  complaint_description:
+    type: text
+    label: 投诉描述
+    description: 客户反馈的投诉详细事实与诉求说明
 
   ticket_no:
     type: text
     label: 工单编号
-    description: 客服工单编号
+    description: 客服支持系统创建生成的工单编号
+
+  related_no:
+    type: text
+    label: 关联业务/交易单号
+    description: 投诉问题关联的交易流水号、卡号或贷款申请号
+
+  reply:
+    type: text
+    label: 动作答复文本
+    description: Action 执行完成后返回给用户的格式化回复内容
+
+  # ============================================================================
+  # 2. 兼容保留槽位（供过渡期与回归测试使用）
+  # ============================================================================
+  order_number:
+    type: text
+    label: 订单号
+    description: 兼容保留的订单号
+
+  order_status:
+    type: text
+    label: 订单状态
+    description: 兼容保留的订单状态
+
+  order_summary:
+    type: text
+    label: 订单摘要
+    description: 兼容保留的订单摘要信息
+
+  tracking_number:
+    type: text
+    label: 物流单号
+    description: 兼容保留的物流单号
+
+  logistics_company:
+    type: text
+    label: 物流公司
+    description: 兼容保留的物流公司名称
+
+  logistics_status:
+    type: text
+    label: 物流进度
+    description: 兼容保留的物流进度
+
+  refund_reason:
+    type: text
+    label: 退款原因
+    description: 兼容保留的退款原因
 
 flows:
+  # ============================================================================
+  # 1. 基础引导与人工客服
+  # ============================================================================
   onboarding:
     name: 欢迎引导
-    description: 在聊天窗口初次打开时欢迎用户，并介绍助手可处理的电商服务。这个 flow 通常由系统主动触发。
+    description: 在聊天窗口初次打开时欢迎用户，并介绍助手可处理的金融银行服务。通常由系统主动触发。
     steps:
       - id: start
         type: start
@@ -112,136 +159,7 @@ flows:
       - id: respond
         type: response
         template:
-          text: "你好，这里是 Atguigu 电商助手。我可以帮你查订单状态、查物流、了解商品信息，或者提交退款申请。"
-        next: end
-
-      - id: end
-        type: end
-        next: []
-
-  order_status_query:
-    name: 订单状态查询
-    description: 帮用户查询订单当前的处理状态，例如待付款、待发货、已发货或已完成。
-    steps:
-      - id: start
-        type: start
-        next: ask_order_number
-
-      - id: ask_order_number
-        type: collect
-        slot_name: order_number
-        template:
-          text: "请告诉我你的订单号。"
-        next: lookup_order_status
-
-      - id: lookup_order_status
-        type: action
-        action: action_lookup_order_status
-        next: show_order_status
-
-      - id: show_order_status
-        type: response
-        template:
-          text: "订单{{ slots.order_number }}
-          当前状态是：{{ slots.order_status }}。
-          {{ slots.order_summary }}"
-        next: end
-
-      - id: end
-        type: end
-        next: []
-
-  logistics_tracking:
-    name: 物流查询
-    description: 帮用户查询订单物流进度、物流单号和配送公司信息。
-    steps:
-      - id: start
-        type: start
-        next: ask_order_number
-
-      - id: ask_order_number
-        type: collect
-        slot_name: order_number
-        template:
-          text: "请告诉我你的订单号。"
-        next: lookup_logistics
-
-      - id: lookup_logistics
-        type: action
-        action: action_lookup_logistics
-        next: show_logistics
-
-      - id: show_logistics
-        type: response
-        template:
-          text: "订单{{ slots.order_number }}
-          由{{ slots.logistics_company }}配送，
-          物流单号是{{ slots.tracking_number }}。
-          当前进度：{{ slots.logistics_status }}。"
-        next: end
-
-      - id: end
-        type: end
-        next: []
-
-  refund_request:
-    name: 退款申请
-    description: 帮用户提交简单的退款申请，收集订单号和退款原因。
-    steps:
-      - id: start
-        type: start
-        next: ask_order_number
-
-      - id: ask_order_number
-        type: collect
-        slot_name: order_number
-        template:
-          text: "请告诉我你的订单号。"
-        next: ask_refund_reason
-
-      - id: ask_refund_reason
-        type: collect
-        slot_name: refund_reason
-        template:
-          text: "请简单说一下退款原因。"
-        next: refund_submitted
-
-      - id: refund_submitted
-        type: response
-        template:
-          text: "好的，订单{{ slots.order_number }}的退款申请已提交，原因是：{{ slots.refund_reason }}。后续会尽快为你处理。"
-        next: end
-
-      - id: end
-        type: end
-        next: []
-
-  similar_product_recommendation:
-    name: 相似商品推荐
-    description: 基于当前商品为用户推荐类似商品。当前版本先保留流程入口，具体推荐能力后续接入。
-    steps:
-      - id: start
-        type: start
-        next:
-          - if: "slots.get('product_id')"
-            then: respond
-          - else: missing_product_context
-
-      - id: missing_product_context
-        type: response
-        template:
-          text: "请先选择一个商品，再继续咨询。"
-        next: end
-
-      - id: respond
-        type: action
-        action: action_recommend_similar_products
-        next: show_recommendation
-
-      - id: show_recommendation
-        type: response
-        template:
-          text: "{{ slots.recommendation_summary }}"
+          text: "您好，我是您的金融智能客服助手。我可以为您提供账户余额查询、交易明细查询、消费贷款申请、信用卡紧急挂失以及客服投诉工单处理等金融服务。"
         next: end
 
       - id: end
@@ -250,7 +168,7 @@ flows:
 
   human_handoff:
     name: 人工客服
-    description: 将当前对话转交给人工客服处理。
+    description: 将当前对话转交给人工客服专员处理。
     steps:
       - id: start
         type: start
@@ -259,14 +177,16 @@ flows:
       - id: respond
         type: response
         template:
-          text: "好的，我来为你转接人工客服，请稍等。"
+          text: "好的，已为您转接银行人工客服专员，请稍候。"
         next: end
 
       - id: end
         type: end
         next: []
 
-  # 金融任务型对话流程
+  # ============================================================================
+  # 2. 五大金融任务型业务流程
+  # ============================================================================
   account_balance_query:
     name: 账户余额查询
     description: 帮用户查询指定银行账户或银行卡的可用余额、冻结金额及状态。
@@ -366,7 +286,7 @@ flows:
 
   card_loss_report:
     name: 信用卡挂失
-    description: 帮用户紧急挂失信用卡或银行卡，冻结账户防止资金损失。
+    description: 帮用户紧急挂失信用卡或银行卡，变更状态为挂失生效，防止资金损失。
     steps:
       - id: start
         type: start
@@ -394,7 +314,7 @@ flows:
       - id: show_loss_result
         type: response
         template:
-          text: "{{ slots.reply or '卡片已成功办理紧急挂失并冻结。' }}"
+          text: "{{ slots.reply or '卡片已成功办理紧急挂失，资金安全已受保护。' }}"
         next: end
 
       - id: end
@@ -432,6 +352,101 @@ flows:
         type: response
         template:
           text: "{{ slots.reply or '您的投诉工单已创建成功，我们将尽快处理。' }}"
+        next: end
+
+      - id: end
+        type: end
+        next: []
+
+  # ============================================================================
+  # 3. 兼容保留流程（供过渡期回归测试使用）
+  # ============================================================================
+  order_status_query:
+    name: 订单状态查询（兼容保留）
+    description: 兼容保留的订单状态查询流程。
+    steps:
+      - id: start
+        type: start
+        next: ask_order_number
+
+      - id: ask_order_number
+        type: collect
+        slot_name: order_number
+        template:
+          text: "请告诉我你的订单号。"
+        next: lookup_order_status
+
+      - id: lookup_order_status
+        type: action
+        action: action_lookup_order_status
+        next: show_order_status
+
+      - id: show_order_status
+        type: response
+        template:
+          text: "订单{{ slots.order_number }} 当前状态是：{{ slots.order_status }}。{{ slots.order_summary }}"
+        next: end
+
+      - id: end
+        type: end
+        next: []
+
+  logistics_tracking:
+    name: 物流查询（兼容保留）
+    description: 兼容保留的物流进度查询流程。
+    steps:
+      - id: start
+        type: start
+        next: ask_order_number
+
+      - id: ask_order_number
+        type: collect
+        slot_name: order_number
+        template:
+          text: "请告诉我你的订单号。"
+        next: lookup_logistics
+
+      - id: lookup_logistics
+        type: action
+        action: action_lookup_logistics
+        next: show_logistics
+
+      - id: show_logistics
+        type: response
+        template:
+          text: "订单{{ slots.order_number }} 由{{ slots.logistics_company }}配送，物流单号是{{ slots.tracking_number }}。当前进度：{{ slots.logistics_status }}。"
+        next: end
+
+      - id: end
+        type: end
+        next: []
+
+  refund_request:
+    name: 退款申请（兼容保留）
+    description: 兼容保留的退款申请流程。
+    steps:
+      - id: start
+        type: start
+        next: ask_order_number
+
+      - id: ask_order_number
+        type: collect
+        slot_name: order_number
+        template:
+          text: "请告诉我你的订单号。"
+        next: ask_refund_reason
+
+      - id: ask_refund_reason
+        type: collect
+        slot_name: refund_reason
+        template:
+          text: "请简单说一下退款原因。"
+        next: refund_submitted
+
+      - id: refund_submitted
+        type: response
+        template:
+          text: "好的，订单{{ slots.order_number }}的退款申请已提交，原因是：{{ slots.refund_reason }}。后续会尽快为你处理。"
         next: end
 
       - id: end

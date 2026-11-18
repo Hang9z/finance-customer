@@ -139,6 +139,9 @@ class TestAsyncDialogueExecution(unittest.IsolatedAsyncioTestCase):
         engine.task_handler.flow_executor.action_runner.run = AsyncMock(
             return_value=ActionResult(result={"order_status": "待发货", "order_summary": "包裹准备中"})
         )
+        engine.task_handler.flow_executor.response_render.render = AsyncMock(
+            return_value=BotMessage(text="订单 1101 状态为 待发货，包裹准备中")
+        )
 
         # Turn 1: Start flow
         mock_planner.plan.return_value = TurnPlan(
