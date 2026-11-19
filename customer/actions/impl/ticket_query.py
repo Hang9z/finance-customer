@@ -68,7 +68,17 @@ class TicketQueryAction(Action):
                     "ticket_category": ticket_type,
                     "ticket_status": raw_status,
                     "reply": reply,
-                }
+                },
+                receipt={
+                    "kind": "ticket_progress",
+                    "title": "工单进度回执",
+                    "sealText": "已核验",
+                    "ticketNo": resolved_ticket_no,
+                    "category": ticket_type,
+                    "status": status_text,
+                    "handlerName": handler_name,
+                    "submittedAt": submitted_at,
+                },
             )
         except Exception as e:
             logger.error("查询工单进度失败: %s", e)

@@ -12,6 +12,7 @@ from customer.actions.base import (
 )
 from customer.clients.finance_client import finance_client
 from customer.domain.state import DialogueState
+from customer.security.masking import mask_identifier
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ class AccountBalanceQueryAction(Action):
             status = data.get("account_status", "active")
             status_text = _STATUS_LABELS.get(status, status)
             display_no = str(data.get("account_no") or normalized_no)
+            masked_no = mask_identifier(display_no)
 
             return ActionResult(
                 result={
@@ -62,10 +64,20 @@ class AccountBalanceQueryAction(Action):
                     "currency": currency,
                     "status": status,
                     "reply": (
-                        f"您的账户 {display_no} 当前可用余额为 {available_balance} {currency}，"
+                        f"您的账户 {masked_no} 当前可用余额为 {available_balance} {currency}，"
                         f"冻结金额为 {frozen_amount} {currency}，账户状态：{status_text}。"
                     ),
-                }
+                },
+                receipt={
+                    "kind": "balance",
+                    "title": "余额回单",
+                    "sealText": "已核验",
+                    "accountNo": masked_no,
+                    "availableBalance": str(available_balance),
+                    "currency": currency,
+                    "frozenAmount": str(frozen_amount),
+                    "accountStatus": status_text,
+                },
             )
         except Exception as e:
             logger.error("查询账户余额失败: %s", e)

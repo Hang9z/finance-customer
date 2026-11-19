@@ -34,6 +34,15 @@ class Settings(BaseSettings):
     # 服务器
     app_host: str = "0.0.0.0"
     app_port: int = 18082
+    # 会话安全与鉴权
+    auth_secret: str = "zhongzhou-finance-dev-secret-change-in-prod"
+    auth_token_ttl_seconds: int = 7200
+    auth_required: bool = False
+    # Langfuse 可观测性配置
+    langfuse_secret_key: str = ""
+    langfuse_public_key: str = ""
+    langfuse_base_url: str = "https://jp.cloud.langfuse.com"
+    langfuse_enabled: bool = True
 
 settings = Settings()
 

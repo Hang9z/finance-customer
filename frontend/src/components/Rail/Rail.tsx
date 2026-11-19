@@ -38,8 +38,11 @@ interface RailProps {
 const SCENARIO_ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   balance: Wallet,
   transactions: ListOrdered,
+  credit_limit: Landmark,
   loan: Landmark,
   loan_progress: FileSearch,
+  repayment_plan: FileSearch,
+  loan_repayment: Wallet,
   card_loss: CreditCard,
   ticket: MessageSquareWarning,
   ticket_query: ClipboardCheck,

@@ -18,6 +18,7 @@ from customer.prompts.loader import load_prompt
 from customer.plan.turn_plan import TurnPlan
 from customer.handlers.task.flow.models import FlowCatalog, Flow
 from customer.utils.llm_client import llm
+from customer.utils.observability import get_langchain_config
 
 
 """
@@ -72,14 +73,17 @@ class TurnPlanner:
         )
 
         # 3. 调用方法执行, 传入提示词模板所需的所有字段
-        result = await chain.ainvoke(input={
-            "user_message": rendered_user_message,
-            "conversation_history": conversation_history,
-            "focused_object_json": focused_object_json,
-            "flows_json": flows_json,
-            "task_state_json": task_state_json,
-            "knowledge_intents_json": knowledge_intents_json,
-        })
+        result = await chain.ainvoke(
+            input={
+                "user_message": rendered_user_message,
+                "conversation_history": conversation_history,
+                "focused_object_json": focused_object_json,
+                "flows_json": flows_json,
+                "task_state_json": task_state_json,
+                "knowledge_intents_json": knowledge_intents_json,
+            },
+            config=get_langchain_config("turn_planner", ["intent_planning"]),
+        )
 
         # 4. 把 llm 返回的 json 结构转为对象
         return TurnPlan.from_dict(result)

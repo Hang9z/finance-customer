@@ -77,7 +77,17 @@ class LoanProgressQueryAction(Action):
                     "loan_term": str(apply_term),
                     "status": raw_status,
                     "reply": reply,
-                }
+                },
+                receipt={
+                    "kind": "loan_progress",
+                    "title": "贷款进度回执",
+                    "sealText": "已核验",
+                    "applicationNo": app_no,
+                    "amount": str(apply_amount),
+                    "termMonths": str(apply_term),
+                    "status": status_text,
+                    "submittedAt": submitted_at,
+                },
             )
         except Exception as e:
             logger.error("查询贷款进度失败: %s", e)

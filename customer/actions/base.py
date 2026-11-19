@@ -19,6 +19,7 @@ class Action(ABC):
 @dataclass
 class ActionResult:
     result: dict[str, Any] = field(default_factory=dict)
+    receipt: dict[str, Any] | None = None
 
 
 def get_active_slots(state: DialogueState) -> dict[str, Any]:

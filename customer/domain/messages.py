@@ -33,6 +33,8 @@ class UserMessage:
 class BotMessage:
     text: str | None = None
     object: MessageObject | None = None
+    receipt: dict[str, Any] | None = None
+    event: dict[str, Any] | None = None
 
 
 # 5. ProcessResult 依赖 BotMessage，必须最后
@@ -42,3 +44,5 @@ class ProcessResult:
     message_id: str
     # 客服回复
     messages: list[BotMessage]     # 这里也不用引号了
+    workflow_state: dict[str, Any] | None = None
+    quick_replies: list[dict[str, str]] = field(default_factory=list)

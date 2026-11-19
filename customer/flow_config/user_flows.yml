@@ -101,6 +101,21 @@ slots:
     label: 关联业务/交易单号
     description: 投诉问题关联的交易流水号、卡号或贷款申请号
 
+  contract_no:
+    type: text
+    label: 贷款合同号
+    description: 贷款合同编号（例如 LCT 开头的合同号）
+
+  bill_no:
+    type: text
+    label: 还款账单号
+    description: 待还款账单编号（例如 BIL 或 BILL 开头的账单号）
+
+  repayment_amount:
+    type: text
+    label: 还款金额
+    description: 本次计划偿还的贷款金额（元）
+
   reply:
     type: text
     label: 动作答复文本
@@ -159,7 +174,7 @@ flows:
       - id: respond
         type: response
         template:
-          text: "您好，我是您的金融智能客服助手。我可以为您提供账户余额查询、交易明细查询、消费贷款申请与审批进度查询、信用卡紧急挂失、客服投诉工单登记与进度查询等金融服务。"
+          text: "您好，我是您的金融智能客服助手。我可以为您提供账户余额与交易明细查询、授信额度查询、消费贷款申请与审批进度查询、还款账单与逾期查询、贷款还款、信用卡紧急挂失及客服工单登记与进度查询等全链路金融服务。"
         next: end
 
       - id: end
@@ -260,6 +275,13 @@ flows:
         slot_name: loan_amount
         template:
           text: "请问您本次计划申请的贷款金额是多少元？"
+        quick_replies:
+          - label: "1 万元"
+            value: "10000"
+          - label: "5 万元"
+            value: "50000"
+          - label: "10 万元"
+            value: "100000"
         next: ask_term
 
       - id: ask_term
@@ -267,6 +289,24 @@ flows:
         slot_name: loan_term
         template:
           text: "请问您期望的贷款期限是几个月？（支持 6、12、24、36 期）"
+        quick_replies:
+          - label: "6 期"
+            value: "6期"
+          - label: "12 期"
+            value: "12期"
+          - label: "24 期"
+            value: "24期"
+          - label: "36 期"
+            value: "36期"
+        next: confirm_loan
+
+      - id: confirm_loan
+        type: confirm
+        risk_level: high
+        confirm_slot: _confirmed
+        template:
+          text: "【操作确认】请核对您的贷款申请信息：申请金额 **{{ slots.loan_amount }} 元**，期限 **{{ slots.loan_term }} 个月**。确认提交后将冻结对应授信额度，是否确认办理？"
+        cancel_message: "好的，已为您取消本次消费贷款申请，未冻结授信额度。"
         next: submit_loan
 
       - id: submit_loan
@@ -304,6 +344,22 @@ flows:
         slot_name: loss_reason
         template:
           text: "请问挂失的主要原因是什么？（例如：卡片丢失、被盗、疑似被盗刷等）"
+        quick_replies:
+          - label: "卡片丢失"
+            value: "卡片丢失"
+          - label: "疑似盗刷"
+            value: "疑似盗刷"
+          - label: "卡片被盗"
+            value: "卡片被盗"
+        next: confirm_card_loss
+
+      - id: confirm_card_loss
+        type: confirm
+        risk_level: high
+        confirm_slot: _confirmed
+        template:
+          text: "【高风险操作确认】即将对卡片/账户 **{{ mask_id(slots.card_no) }}** 办理紧急挂失（挂失原因：{{ slots.loss_reason }}），确认后账户与关联银行卡将立即止付。是否确认继续办理？"
+        cancel_message: "好的，已为您取消本次卡片挂失操作，账户与银行卡状态未作变更。"
         next: submit_loss
 
       - id: submit_loss
@@ -334,6 +390,15 @@ flows:
         slot_name: ticket_category
         template:
           text: "请问您要投诉或反馈的问题类型是什么？（如：服务态度、转账未到账、扣费异常、系统故障等）"
+        quick_replies:
+          - label: "转账未到账"
+            value: "转账未到账"
+          - label: "扣费异常"
+            value: "扣费异常"
+          - label: "服务态度"
+            value: "服务态度"
+          - label: "系统故障"
+            value: "系统故障"
         next: ask_desc
 
       - id: ask_desc
@@ -412,6 +477,105 @@ flows:
         type: response
         template:
           text: "{{ slots.reply or '已为您完成工单进度查询。' }}"
+        next: end
+
+      - id: end
+        type: end
+        next: []
+
+  credit_limit_query:
+    name: 授信额度查询
+    description: 帮用户查询名下各信贷产品的可用授信额度、总额度、已冻结额度及有效期。
+    steps:
+      - id: start
+        type: start
+        next: query_limits
+
+      - id: query_limits
+        type: action
+        action: action_query_credit_limit
+        next: show_limits
+
+      - id: show_limits
+        type: response
+        template:
+          text: "{{ slots.reply or '已完成授信额度查询。' }}"
+        next: end
+
+      - id: end
+        type: end
+        next: []
+
+  repayment_plan_query:
+    name: 还款计划与账单查询
+    description: 帮用户查询名下贷款还款账单、还款计划明细及逾期情况（支持直接查询客户名下账单或指定合同号）。
+    steps:
+      - id: start
+        type: start
+        next: query_repayment_plan
+
+      - id: query_repayment_plan
+        type: action
+        action: action_query_repayment_plan
+        next: show_repayment_plan
+
+      - id: show_repayment_plan
+        type: response
+        template:
+          text: "{{ slots.reply or '已完成还款账单与计划查询。' }}"
+        next: end
+
+      - id: end
+        type: end
+        next: []
+
+  loan_repayment:
+    name: 贷款还款
+    description: 引导用户对指定贷款还款账单发起正常还款，收集账单号、扣款账户及还款金额并经二次确认后扣款入账。
+    steps:
+      - id: start
+        type: start
+        next: ask_bill_no
+
+      - id: ask_bill_no
+        type: collect
+        slot_name: bill_no
+        template:
+          text: "请提供需要还款的账单编号（例如 BILL 开头的编号，或先让我为您查询待还账单）。"
+        next: ask_account_no
+
+      - id: ask_account_no
+        type: collect
+        slot_name: account_no
+        template:
+          text: "请提供用于扣款还款的银行卡号或账户号（支持 4 位尾号）。"
+        next: ask_repayment_amount
+
+      - id: ask_repayment_amount
+        type: collect
+        slot_name: repayment_amount
+        template:
+          text: "请问本次计划还款多少元？"
+        next: confirm_repayment
+
+      - id: confirm_repayment
+        type: confirm
+        risk_level: high
+        confirm_slot: _confirmed
+        template:
+          text: "【高风险资金操作确认】即将从账户 **{{ mask_id(slots.account_no) }}** 扣款 **{{ slots.repayment_amount }} 元** 偿还账单 **{{ slots.bill_no }}**。是否确认提交还款？"
+        cancel_message: "好的，已为您取消本次贷款还款操作，账户资金未发生变动。"
+        next: submit_repayment
+
+      - id: submit_repayment
+        type: action
+        action: action_submit_repayment
+        next: show_repayment_result
+
+      - id: show_repayment_result
+        type: response
+        template:
+          text: "{{ slots.reply or '您的贷款还款已完成。' }}"
         next: end
 
       - id: end

@@ -233,6 +233,101 @@ class FinanceClient:
         response.raise_for_status()
         return response.json().get("data", {})
 
+    async def get_loan_contract(
+        self,
+        contract_no: str,
+        customer_no: str | None = None,
+    ) -> dict[str, Any]:
+        """查询贷款合同借据详情."""
+        normalized_no = self._normalize_identifier(contract_no)
+        url = f"{self.base_url}/loan/contracts/{normalized_no}"
+        headers = self._build_headers(customer_no)
+        response = await self._http().get(url, headers=headers)
+        response.raise_for_status()
+        return response.json().get("data", {})
+
+    async def get_repayment_schedules(
+        self,
+        contract_no: str,
+        customer_no: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """查询贷款合同还款计划明细."""
+        normalized_no = self._normalize_identifier(contract_no)
+        url = f"{self.base_url}/loan/contracts/{normalized_no}/repayment-schedules"
+        headers = self._build_headers(customer_no)
+        response = await self._http().get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json().get("data", {})
+        return data.get("list", []) if isinstance(data, dict) else data
+
+    async def get_repayment_bills(
+        self,
+        customer_no: str | None = None,
+        contract_no: str | None = None,
+        bill_status: str | None = None,
+        page_no: int = 1,
+        page_size: int = 20,
+    ) -> dict[str, Any]:
+        """查询客户或合同名下还款账单列表."""
+        resolved_customer = customer_no or self.default_customer_no
+        url = f"{self.base_url}/repayment/bills"
+        params: dict[str, Any] = {"page_no": page_no, "page_size": page_size}
+        if contract_no:
+            params["contract_no"] = self._normalize_identifier(contract_no)
+        elif resolved_customer:
+            params["customer_no"] = resolved_customer
+        if bill_status:
+            params["bill_status"] = bill_status
+        headers = self._build_headers(resolved_customer)
+        response = await self._http().get(url, params=params, headers=headers)
+        response.raise_for_status()
+        return response.json().get("data", {})
+
+    async def get_overdues(
+        self,
+        customer_no: str | None = None,
+        contract_no: str | None = None,
+        page_no: int = 1,
+        page_size: int = 20,
+    ) -> dict[str, Any]:
+        """查询客户或合同逾期记录."""
+        resolved_customer = customer_no or self.default_customer_no
+        url = f"{self.base_url}/overdues"
+        params: dict[str, Any] = {"page_no": page_no, "page_size": page_size}
+        if contract_no:
+            params["contract_no"] = self._normalize_identifier(contract_no)
+        elif resolved_customer:
+            params["customer_no"] = resolved_customer
+        headers = self._build_headers(resolved_customer)
+        response = await self._http().get(url, params=params, headers=headers)
+        response.raise_for_status()
+        return response.json().get("data", {})
+
+    async def submit_repayment(
+        self,
+        bill_no: str,
+        account_no: str,
+        repayment_amount: str | float,
+        customer_no: str | None = None,
+        repayment_type: str = "normal",
+        request_no: str | None = None,
+        channel_code: str = "MOBILE_BANK",
+    ) -> dict[str, Any]:
+        """发起贷款正常还款."""
+        resolved_customer = customer_no or self.default_customer_no
+        url = f"{self.base_url}/repayments"
+        payload = {
+            "request_no": request_no or uuid.uuid4().hex,
+            "bill_no": self._normalize_identifier(bill_no),
+            "account_no": self._normalize_identifier(account_no),
+            "repayment_amount": f"{float(repayment_amount):.2f}",
+            "repayment_type": repayment_type or "normal",
+        }
+        headers = self._build_headers(resolved_customer, channel_code=channel_code)
+        response = await self._http().post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response.json().get("data", {})
+
     # ==================== 3. 运营与工单 ====================
 
     async def create_support_ticket(
@@ -283,7 +378,42 @@ class FinanceClient:
         response.raise_for_status()
         return response.json().get("data", {})
 
-    # ==================== 4. 金融产品与知识检索 ====================
+    # ==================== 4. 客户实时资产与档案 ====================
+
+    async def get_customer_accounts(self, customer_no: str | None = None) -> list[dict[str, Any]]:
+        """查询客户名下银行账户列表."""
+        resolved_customer = customer_no or self.default_customer_no
+        url = f"{self.base_url}/customers/{resolved_customer}/accounts"
+        headers = self._build_headers(resolved_customer)
+        response = await self._http().get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json().get("data", {})
+        if isinstance(data, dict):
+            return data.get("list") or data.get("items") or []
+        return data
+
+    async def get_customer_wealth_positions(self, customer_no: str | None = None) -> list[dict[str, Any]]:
+        """查询客户理财持仓列表."""
+        resolved_customer = customer_no or self.default_customer_no
+        url = f"{self.base_url}/customers/{resolved_customer}/wealth/positions"
+        headers = self._build_headers(resolved_customer)
+        response = await self._http().get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json().get("data", {})
+        if isinstance(data, dict):
+            return data.get("list") or data.get("items") or []
+        return data
+
+    async def get_customer_profile(self, customer_no: str | None = None) -> dict[str, Any]:
+        """查询客户档案与风险等级."""
+        resolved_customer = customer_no or self.default_customer_no
+        url = f"{self.base_url}/customers/{resolved_customer}"
+        headers = self._build_headers(resolved_customer)
+        response = await self._http().get(url, headers=headers)
+        response.raise_for_status()
+        return response.json().get("data", {})
+
+    # ==================== 5. 金融产品与知识检索 ====================
 
     async def get_loan_products(self, page_no: int = 1, page_size: int = 20) -> list[dict[str, Any]]:
         """获取信贷产品列表及利率说明."""

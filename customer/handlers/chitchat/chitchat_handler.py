@@ -9,6 +9,7 @@ from customer.domain.messages import UserMessage, BotMessage
 from customer.prompts.history_builder import HistoryBuilder
 from customer.prompts.loader import load_prompt
 from customer.utils.llm_client import llm
+from customer.utils.observability import get_langchain_config
 
 
 class ChitChatHandler:
@@ -33,7 +34,8 @@ class ChitChatHandler:
             {
                 "history": history,
                 "user_message": HistoryBuilder.render_user_message(user_message)
-            }
+            },
+            config=get_langchain_config("chitchat_respond", ["chitchat"]),
         )
 
         return [BotMessage(text=result)]

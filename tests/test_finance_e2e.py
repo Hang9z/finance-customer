@@ -56,7 +56,10 @@ class TestFinanceEndToEndFlows(unittest.IsolatedAsyncioTestCase):
             )
 
         mock_get.assert_awaited_once_with(account_no="ACC0000000001", customer_no="CUST00000001")
-        self.assertTrue(any("8500.00" in m.text for m in r2.messages))
+        self.assertTrue(any("8500.00" in m.text and "ACC****0001" in m.text for m in r2.messages))
+        self.assertEqual(r2.workflow_state["source"], "server")
+        self.assertIsNone(r2.workflow_state["active"])
+        self.assertEqual(r2.messages[-1].receipt["kind"], "balance")
         self.assertIsNone(state.tasks.active)
 
     async def test_transaction_history_query_single_turn(self):
@@ -144,16 +147,25 @@ class TestFinanceEndToEndFlows(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("贷款期限" in m.text for m in r4.messages))
         self.assertEqual(state.tasks.active.slots.get("loan_amount"), "50000")
 
-        # 5. 补充期限完成进件
+        # 5. 补充期限后进入高危二次确认门禁（此时不应直接调用中台进件）
         mock_planner.plan.return_value = TurnPlan(
             task=TaskTurnPlan(commands=[SetSlotsCommand(command="set_slots", slots={"loan_term": "12"})])
         )
         with patch(
             "customer.actions.impl.loan_application.finance_client.apply_loan",
             new=AsyncMock(return_value={"application_no": "LAP202611180088", "application_status": "submitted"}),
-        ):
+        ) as mock_apply:
             r5 = await engine.process_message(state, _text_msg("12期", "m5"))
-        self.assertTrue(any("LAP202611180088" in m.text for m in r5.messages))
+            mock_apply.assert_not_awaited()
+            self.assertTrue(any("确认" in m.text for m in r5.messages))
+            self.assertTrue(r5.workflow_state["active"]["awaitingConfirmation"])
+            self.assertEqual(len(r5.quick_replies), 2)
+
+            # 6. 用户明确点击/输入“确认办理”后才真正提交中台并生成贷款受理回执
+            r6 = await engine.process_message(state, _text_msg("确认办理", "m6"))
+            mock_apply.assert_awaited_once()
+        self.assertTrue(any("LAP202611180088" in m.text for m in r6.messages))
+        self.assertEqual(r6.messages[-1].receipt["kind"], "loan")
         self.assertIsNone(state.tasks.active)
 
     async def test_card_loss_report_with_card_object_message(self):
@@ -179,6 +191,11 @@ class TestFinanceEndToEndFlows(unittest.IsolatedAsyncioTestCase):
             new=AsyncMock(return_value={"status_history_id": 202, "current_status": "loss_reported"}),
         ) as mock_loss:
             r3 = await engine.process_message(state, _text_msg("卡片丢了", "m3"))
+            mock_loss.assert_not_awaited()
+            self.assertTrue(any("ACC****0002" in m.text and "高风险操作确认" in m.text for m in r3.messages))
+            self.assertTrue(r3.workflow_state["active"]["awaitingConfirmation"])
+
+            r4 = await engine.process_message(state, _text_msg("确认办理", "m4"))
 
         mock_loss.assert_awaited_once_with(
             account_no="ACC0000000002",
@@ -186,7 +203,8 @@ class TestFinanceEndToEndFlows(unittest.IsolatedAsyncioTestCase):
             reason="卡片丢失",
             customer_no="CUST00000001",
         )
-        self.assertTrue(any("紧急挂失" in m.text for m in r3.messages))
+        self.assertTrue(any("ACC****0002" in m.text and "紧急挂失" in m.text for m in r4.messages))
+        self.assertEqual(r4.messages[-1].receipt["kind"], "card_loss")
         self.assertIsNone(state.tasks.active)
 
     async def test_complaint_ticket_flow(self):
@@ -323,6 +341,134 @@ class TestFinanceEndToEndFlows(unittest.IsolatedAsyncioTestCase):
 
         mock_get.assert_awaited_once_with(ticket_no="TKT20261118160255311779", customer_no="CUS00000001")
         self.assertTrue(any("工单编号【TKT20261118160255311779】" in m.text and "【已受理待处理】" in m.text for m in r2.messages))
+        self.assertIsNone(state.tasks.active)
+
+    async def test_loan_application_cancel_at_confirmation_does_not_submit(self):
+        engine = build_engine()
+        state = DialogueState(sender_id="CUS00000031")
+        mock_planner = AsyncMock()
+        engine.turn_planner = mock_planner
+
+        mock_planner.plan.return_value = TurnPlan(
+            task=TaskTurnPlan(
+                commands=[
+                    StartFlowCommand(command="start_flow", flow="loan_application"),
+                    SetSlotsCommand(command="set_slots", slots={"loan_amount": "50000", "loan_term": "12"}),
+                ]
+            )
+        )
+        r1 = await engine.process_message(state, _text_msg("我要贷款5万元 12期", "m1", sender_id="CUS00000031"))
+        self.assertTrue(r1.workflow_state["active"]["awaitingConfirmation"])
+
+        with patch(
+            "customer.actions.impl.loan_application.finance_client.apply_loan",
+            new=AsyncMock(return_value={"application_no": "LAP_NEVER", "application_status": "submitted"}),
+        ) as mock_apply:
+            r2 = await engine.process_message(state, _text_msg("取消", "m2", sender_id="CUS00000031"))
+
+        mock_apply.assert_not_awaited()
+        self.assertTrue(any("取消" in m.text for m in r2.messages))
+        self.assertIsNone(state.tasks.active)
+        self.assertIsNone(r2.workflow_state["active"])
+
+    async def test_loan_confirmation_survives_task_switch_and_resume(self):
+        engine = build_engine()
+        state = DialogueState(sender_id="CUS00000031")
+        mock_planner = AsyncMock()
+        engine.turn_planner = mock_planner
+
+        mock_planner.plan.return_value = TurnPlan(
+            task=TaskTurnPlan(
+                commands=[
+                    StartFlowCommand(command="start_flow", flow="loan_application"),
+                    SetSlotsCommand(command="set_slots", slots={"loan_amount": "50000", "loan_term": "12"}),
+                ]
+            )
+        )
+        r1 = await engine.process_message(state, _text_msg("申请5万 12期贷款", "m1", sender_id="CUS00000031"))
+        loan_task_id = state.tasks.active.task_id
+        self.assertTrue(r1.workflow_state["active"]["awaitingConfirmation"])
+
+        # 确认前插队查余额
+        mock_planner.plan.return_value = TurnPlan(
+            task=TaskTurnPlan(
+                commands=[
+                    StartFlowCommand(command="start_flow", flow="account_balance_query"),
+                    SetSlotsCommand(command="set_slots", slots={"account_no": "ACC0000000031"}),
+                ]
+            )
+        )
+        with patch(
+            "customer.actions.impl.account_balance.finance_client.get_account",
+            new=AsyncMock(return_value={"account_no": "ACC0000000031", "account_status": "active", "balance_amount": "5875.00", "frozen_amount": "0.00"}),
+        ):
+            r2 = await engine.process_message(state, _text_msg("先帮我查下账户余额", "m2", sender_id="CUS00000031"))
+        self.assertEqual(len(state.tasks.paused), 1)
+        self.assertEqual(r2.workflow_state["paused"][0]["flowName"], "贷款申请")
+
+        # 恢复后仍停留在确认步骤，不直接提交
+        mock_planner.plan.return_value = TurnPlan(
+            task=TaskTurnPlan(commands=[ResumeTaskCommand(command="resume_task", task_id=loan_task_id)])
+        )
+        with patch(
+            "customer.actions.impl.loan_application.finance_client.apply_loan",
+            new=AsyncMock(return_value={"application_no": "LAP202611190001", "application_status": "submitted"}),
+        ) as mock_apply:
+            r3 = await engine.process_message(state, _text_msg("继续刚才的贷款", "m3", sender_id="CUS00000031"))
+            mock_apply.assert_not_awaited()
+            self.assertTrue(r3.workflow_state["active"]["awaitingConfirmation"])
+
+            # 恢复后若修改金额，仍停留确认步骤且展示最新金额
+            mock_planner.plan.return_value = TurnPlan(
+                task=TaskTurnPlan(commands=[SetSlotsCommand(command="set_slots", slots={"loan_amount": "30000"})])
+            )
+            r4 = await engine.process_message(state, _text_msg("把金额改成 30000 元", "m4", sender_id="CUS00000031"))
+            mock_apply.assert_not_awaited()
+            self.assertTrue(any("30000" in m.text for m in r4.messages))
+            self.assertTrue(r4.workflow_state["active"]["awaitingConfirmation"])
+
+            r5 = await engine.process_message(state, _text_msg("确认办理", "m5", sender_id="CUS00000031"))
+            mock_apply.assert_awaited_once()
+        self.assertTrue(any("LAP202611190001" in m.text for m in r5.messages))
+        self.assertIsNone(state.tasks.active)
+
+    async def test_loan_repayment_flow_with_confirmation(self):
+        engine = build_engine()
+        state = DialogueState(sender_id="CUS00000001")
+        mock_planner = AsyncMock()
+        engine.turn_planner = mock_planner
+
+        mock_planner.plan.return_value = TurnPlan(
+            task=TaskTurnPlan(
+                commands=[
+                    StartFlowCommand(command="start_flow", flow="loan_repayment"),
+                    SetSlotsCommand(
+                        command="set_slots",
+                        slots={
+                            "bill_no": "BILL0000095999",
+                            "account_no": "ACC0000000001",
+                            "repayment_amount": "5875.68",
+                        },
+                    ),
+                ]
+            )
+        )
+        with patch(
+            "customer.actions.impl.loan_repayment.finance_client.submit_repayment",
+            new=AsyncMock(return_value={"repayment_no": "RPM202611190088", "repayment_status": "success"}),
+        ) as mock_repay:
+            r1 = await engine.process_message(
+                state,
+                _text_msg("我要还账单 BILL0000095999，用 ACC0000000001 还 5875.68 元", "m1", sender_id="CUS00000001"),
+            )
+            mock_repay.assert_not_awaited()
+            self.assertTrue(r1.workflow_state["active"]["awaitingConfirmation"])
+            self.assertTrue(any("ACC****0001" in m.text and "5875.68" in m.text for m in r1.messages))
+
+            r2 = await engine.process_message(state, _text_msg("确认办理", "m2", sender_id="CUS00000001"))
+            mock_repay.assert_awaited_once()
+        self.assertTrue(any("RPM202611190088" in m.text for m in r2.messages))
+        self.assertEqual(r2.messages[-1].receipt["kind"], "loan_repayment")
         self.assertIsNone(state.tasks.active)
 
 

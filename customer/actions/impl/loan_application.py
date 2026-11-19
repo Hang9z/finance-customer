@@ -117,7 +117,16 @@ class LoanApplicationAction(Action):
                         f"申请金额 {apply_amount:.2f} 元，期限 {loan_term} 个月，"
                         f"当前状态为【{status}】，预计 1 个工作日内完成审批。"
                     ),
-                }
+                },
+                receipt={
+                    "kind": "loan",
+                    "title": "贷款受理单",
+                    "sealText": "已受理",
+                    "applicationNo": application_no,
+                    "amount": f"{apply_amount:.2f}",
+                    "termMonths": str(loan_term),
+                    "status": str(status),
+                },
             )
         except Exception as e:
             logger.error("提交贷款申请失败: %s", e)

@@ -7,6 +7,8 @@ OBJECT_TYPE_SLOT_CANDIDATES: dict[str, tuple[str, ...]] = {
     "card": ("card_no", "account_no"),
     "loan_product": ("product_code",),
     "loan_application": ("application_no", "related_no"),
+    "loan_contract": ("contract_no", "related_no"),
+    "repayment_bill": ("bill_no", "related_no"),
     "wealth_product": ("product_code",),
     "transaction": ("related_no",),
     "ticket": ("ticket_no", "related_no"),

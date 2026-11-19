@@ -1,6 +1,6 @@
 import React from 'react';
 import { X } from 'lucide-react';
-import { ChatObject, ReceiptData, WalletCard } from '../../types/chat';
+import { ChatObject, CustomerCreditLimit, ReceiptData, WalletCard } from '../../types/chat';
 import { CardWallet } from './CardWallet';
 import { ReceiptBook } from './ReceiptBook';
 
@@ -13,7 +13,10 @@ interface LedgerProps {
   onCloseDrawer: () => void;
   flashHighlight: boolean;
   walletCards: WalletCard[];
+  creditLimits: CustomerCreditLimit[];
+  assetsSynced: boolean;
   receipts: ReceiptData[];
+  awaitingSlot: string | null;
   awaitingAccountQuestion: string | null;
   isSending: boolean;
   onSubmitCard: (obj: ChatObject) => void;
@@ -28,7 +31,10 @@ export const Ledger: React.FC<LedgerProps> = ({
   onCloseDrawer,
   flashHighlight,
   walletCards,
+  creditLimits,
+  assetsSynced,
   receipts,
+  awaitingSlot,
   awaitingAccountQuestion,
   isSending,
   onSubmitCard,
@@ -87,6 +93,9 @@ export const Ledger: React.FC<LedgerProps> = ({
         {activeTab === 'wallet' ? (
           <CardWallet
             cards={walletCards}
+            creditLimits={creditLimits}
+            assetsSynced={assetsSynced}
+            awaitingSlot={awaitingSlot}
             awaitingAccountQuestion={awaitingAccountQuestion}
             isSending={isSending}
             onSubmitCard={onSubmitCard}

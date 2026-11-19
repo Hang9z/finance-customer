@@ -1,9 +1,12 @@
+from collections.abc import Awaitable, Callable
+
 from customer.domain.messages import UserMessage, BotMessage
 from customer.domain.state import DialogueState
-from customer.plan.command import Command
+from customer.plan.command import Command, SetSlotsCommand
 from customer.handlers.task.command.command_executor import CommandExecutor
 from customer.handlers.task.flow.flow_executor import FlowExecutor
 from customer.handlers.task.flow.models import FlowCatalog
+from customer.handlers.task.flow.steps import ConfirmFlowStep
 from customer.handlers.task.response.task_event_type import TaskEvent
 from customer.handlers.task.response.task_responder import TaskResponder
 
@@ -31,7 +34,20 @@ class TaskHandler:
 
     async def handle(self, commands: list[Command],
                       state: DialogueState,
-                      user_message: UserMessage) -> list[BotMessage]:
+                      user_message: UserMessage,
+                      on_stage: Callable[[str, str], Awaitable[None]] | None = None) -> list[BotMessage]:
+        # 若用户在确认环节修改槽位参数，则重置确认状态要求重新核对
+        if (
+            state.tasks.active is not None
+            and state.tasks.active.step_id
+            and any(isinstance(cmd, SetSlotsCommand) for cmd in commands)
+        ):
+            flow = self.flow_catalog.flows.get(state.tasks.active.flow_id)
+            if flow is not None:
+                step = flow.get_step_by_id(state.tasks.active.step_id)
+                if isinstance(step, ConfirmFlowStep):
+                    state.tasks.active.slots.pop(step.confirm_slot, None)
+
         # 1. 调用 update_task_state_by_command 更新状态获得过程中得到的事件
         events: list[TaskEvent] = await self.command_executor.update_task_state_by_command(
             commands=commands,
@@ -48,7 +64,8 @@ class TaskHandler:
         bot_messages = await self.flow_executor.execute(
             state=state,
             user_message=user_message,
-            flow_catalog=self.flow_catalog
+            flow_catalog=self.flow_catalog,
+            on_stage=on_stage,
         )
 
         messages.extend(bot_messages)

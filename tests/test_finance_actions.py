@@ -12,8 +12,11 @@ from customer.actions.base import format_action_error
 from customer.actions.builder import registry_action
 from customer.actions.impl.account_balance import AccountBalanceQueryAction
 from customer.actions.impl.card_loss import CardLossAction
+from customer.actions.impl.credit_limit_query import CreditLimitQueryAction
 from customer.actions.impl.loan_application import LoanApplicationAction
 from customer.actions.impl.loan_progress_query import LoanProgressQueryAction
+from customer.actions.impl.loan_repayment import LoanRepaymentAction
+from customer.actions.impl.repayment_plan_query import RepaymentPlanQueryAction
 from customer.actions.impl.ticket_action import ComplaintTicketAction
 from customer.actions.impl.ticket_query import TicketQueryAction
 from customer.actions.impl.transaction_query import TransactionQueryAction
@@ -81,8 +84,11 @@ class TestFinanceActionsExecution(unittest.IsolatedAsyncioTestCase):
         mock_get.assert_awaited_once_with(account_no="ACC0000000001", customer_no="CUST00000001")
         self.assertEqual(res.result["balance"], "12500.50")
         self.assertEqual(res.result["available_balance"], "12000.50")
+        self.assertIn("ACC****0001", res.result["reply"])
         self.assertIn("12000.50", res.result["reply"])
         self.assertIn("正常", res.result["reply"])
+        self.assertEqual(res.receipt["kind"], "balance")
+        self.assertEqual(res.receipt["accountNo"], "ACC****0001")
 
     async def test_transaction_query_action(self):
         action = TransactionQueryAction()
@@ -127,8 +133,11 @@ class TestFinanceActionsExecution(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(res.result["total_count"], 2)
         self.assertEqual(len(res.result["transactions"]), 2)
+        self.assertIn("ACC****0001", res.result["reply"])
         self.assertIn("测试商户", res.result["reply"])
         self.assertIn("工资代发", res.result["reply"])
+        self.assertEqual(res.receipt["kind"], "transactions")
+        self.assertEqual(len(res.receipt["rows"]), 2)
 
     async def test_card_loss_action(self):
         action = CardLossAction()
@@ -151,7 +160,10 @@ class TestFinanceActionsExecution(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(res.result["status"], "loss_reported")
         self.assertEqual(res.result["status_history_id"], 101)
+        self.assertIn("ACC****0002", res.result["reply"])
         self.assertIn("紧急挂失", res.result["reply"])
+        self.assertEqual(res.receipt["kind"], "card_loss")
+        self.assertEqual(res.receipt["cardNo"], "ACC****0002")
 
     async def test_loan_application_action(self):
         action = LoanApplicationAction()
@@ -182,6 +194,8 @@ class TestFinanceActionsExecution(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res.result["application_no"], "LAP202611180001")
         self.assertEqual(res.result["status"], "submitted")
         self.assertIn("LAP202611180001", res.result["reply"])
+        self.assertEqual(res.receipt["kind"], "loan")
+        self.assertEqual(res.receipt["applicationNo"], "LAP202611180001")
 
     async def test_loan_application_invalid_number(self):
         action = LoanApplicationAction()
@@ -234,6 +248,7 @@ class TestFinanceActionsExecution(unittest.IsolatedAsyncioTestCase):
         self.assertIn("授信可用额度不足", res.result["reply"])
         self.assertIn("CREDIT_LIMIT_NOT_ENOUGH", res.result["reply"])
         self.assertNotIn("409 Conflict", res.result["reply"])
+        self.assertIsNone(res.receipt)
 
     async def test_complaint_ticket_action(self):
         action = ComplaintTicketAction()
@@ -260,6 +275,7 @@ class TestFinanceActionsExecution(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(res.result["ticket_no"], "TKT202611180001")
         self.assertIn("TKT202611180001", res.result["reply"])
+        self.assertEqual(res.receipt["kind"], "ticket")
 
     async def test_account_balance_normalizes_spaced_card_no(self):
         action = AccountBalanceQueryAction()
@@ -280,7 +296,8 @@ class TestFinanceActionsExecution(unittest.IsolatedAsyncioTestCase):
 
         mock_get.assert_awaited_once_with(account_no="6222000000000000001", customer_no="CUST00000001")
         self.assertEqual(res.result["resolved_account_no"], "ACC0000000001")
-        self.assertIn("您的账户 ACC0000000001", res.result["reply"])
+        self.assertIn("您的账户 ACC****0001", res.result["reply"])
+        self.assertEqual(res.receipt["accountNo"], "ACC****0001")
 
     async def test_loan_progress_query_action_and_404_error(self):
         action = LoanProgressQueryAction()
@@ -310,6 +327,7 @@ class TestFinanceActionsExecution(unittest.IsolatedAsyncioTestCase):
         self.assertIn("贷款申请编号【LAP20261118155946689466】", res.result["reply"])
         self.assertIn("【审批通过】", res.result["reply"])
         self.assertIn("CON202611180001", res.result["reply"])
+        self.assertEqual(res.receipt["kind"], "loan_progress")
 
         req = httpx.Request("GET", "http://127.0.0.1:8000/api/v1/loan/applications/LAP404")
         resp = httpx.Response(404, request=req, json={"code": "LOAN_APPLICATION_NOT_FOUND", "message": "贷款申请不存在"})
@@ -320,6 +338,7 @@ class TestFinanceActionsExecution(unittest.IsolatedAsyncioTestCase):
         ):
             err_res = await action.run(_build_state("loan_progress_query", {"application_no": "LAP404"}))
         self.assertIn("贷款申请不存在", err_res.result["reply"])
+        self.assertIsNone(err_res.receipt)
 
     async def test_ticket_query_action_and_404_error(self):
         action = TicketQueryAction()
@@ -349,6 +368,7 @@ class TestFinanceActionsExecution(unittest.IsolatedAsyncioTestCase):
         self.assertIn("【处理中】", res.result["reply"])
         self.assertIn("客服人员06", res.result["reply"])
         self.assertIn("正在核对通道扣款记录", res.result["reply"])
+        self.assertEqual(res.receipt["kind"], "ticket_progress")
 
         req = httpx.Request("GET", "http://127.0.0.1:8000/api/v1/support/tickets/TKT404")
         resp = httpx.Response(404, request=req, json={"code": "SUPPORT_TICKET_NOT_FOUND", "message": "客服工单不存在"})
@@ -359,6 +379,73 @@ class TestFinanceActionsExecution(unittest.IsolatedAsyncioTestCase):
         ):
             err_res = await action.run(_build_state("ticket_query", {"ticket_no": "TKT404"}))
         self.assertIn("客服工单不存在", err_res.result["reply"])
+        self.assertIsNone(err_res.receipt)
+
+    async def test_credit_limit_repayment_plan_and_repayment_actions(self):
+        # 1. CreditLimitQueryAction
+        limit_action = CreditLimitQueryAction()
+        with patch(
+            "customer.actions.impl.credit_limit_query.finance_client.get_credit_limits",
+            new=AsyncMock(
+                return_value=[
+                    {
+                        "limit_no": "LMT0000000031",
+                        "product_code": "LOAN_BUSINESS_ECOM",
+                        "total_limit_amount": "255000.00",
+                        "available_limit_amount": "105000.00",
+                        "frozen_limit_amount": "150000.00",
+                        "valid_to": "2027-10-18",
+                    }
+                ]
+            ),
+        ):
+            lim_res = await limit_action.run(_build_state("credit_limit_query", {}, sender_id="CUS00000031"))
+        self.assertEqual(lim_res.result["available_limit_amount"], "105000.00")
+        self.assertEqual(lim_res.receipt["kind"], "credit_limit")
+
+        # 2. RepaymentPlanQueryAction
+        plan_action = RepaymentPlanQueryAction()
+        with (
+            patch(
+                "customer.actions.impl.repayment_plan_query.finance_client.get_repayment_schedules",
+                new=AsyncMock(return_value=[{"period_no": 1, "due_date": "2026-12-01", "principal_amount": "5000.00", "interest_amount": "120.00"}]),
+            ),
+            patch(
+                "customer.actions.impl.repayment_plan_query.finance_client.get_repayment_bills",
+                new=AsyncMock(return_value={"list": [{"bill_no": "BILL0000095999", "outstanding_amount": "5875.68", "paid_amount": "0.00", "bill_status": "overdue"}]}),
+            ),
+            patch(
+                "customer.actions.impl.repayment_plan_query.finance_client.get_overdues",
+                new=AsyncMock(return_value={"list": [{"overdue_no": "OVD001", "overdue_days": 3, "overdue_total_amount": "5875.68"}]}),
+            ),
+        ):
+            plan_res = await plan_action.run(_build_state("repayment_plan_query", {"contract_no": "LCT0000000001"}, sender_id="CUS00000001"))
+        self.assertIn("BILL0000095999", plan_res.result["reply"])
+        self.assertEqual(plan_res.result["overdue_count"], 1)
+        self.assertEqual(plan_res.receipt["kind"], "repayment_plan")
+
+        # 3. LoanRepaymentAction
+        repay_action = LoanRepaymentAction()
+        with patch(
+            "customer.actions.impl.loan_repayment.finance_client.submit_repayment",
+            new=AsyncMock(return_value={"repayment_no": "RPM202611190001", "repayment_status": "success"}),
+        ) as mock_repay:
+            repay_res = await repay_action.run(
+                _build_state(
+                    "loan_repayment",
+                    {"bill_no": "BILL0000095999", "account_no": "ACC0000000001", "repayment_amount": "5875.68元"},
+                    sender_id="CUS00000001",
+                )
+            )
+        mock_repay.assert_awaited_once_with(
+            bill_no="BILL0000095999",
+            account_no="ACC0000000001",
+            repayment_amount=5875.68,
+            customer_no="CUS00000001",
+        )
+        self.assertIn("RPM202611190001", repay_res.result["reply"])
+        self.assertIn("ACC****0001", repay_res.result["reply"])
+        self.assertEqual(repay_res.receipt["kind"], "loan_repayment")
 
 
 class TestFinanceClientContract(unittest.IsolatedAsyncioTestCase):

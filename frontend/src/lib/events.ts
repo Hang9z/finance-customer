@@ -1,4 +1,4 @@
-import { TaskEventInfo, WorkflowState } from '../types/chat';
+import { ServerWorkflowState, TaskEventInfo, WorkflowState } from '../types/chat';
 
 const SWITCH_RE = /^好的[,，]\s*现在把(.+?)暂停[,，]\s*现在开始执行(.+?)$/;
 const START_RE = /^好的[,，]\s*现在开始执行(.+?)$/;
@@ -90,7 +90,34 @@ function isAwaitingQuestion(text: string): boolean {
 }
 
 export function createInitialWorkflowState(): WorkflowState {
-  return { active: null, paused: [] };
+  return { active: null, paused: [], source: 'inferred' };
+}
+
+export function mapServerWorkflowToState(
+  serverState: ServerWorkflowState | null | undefined,
+): WorkflowState | null {
+  if (!serverState) {
+    return null;
+  }
+  const active = serverState.active
+    ? {
+        flowId: serverState.active.flowId,
+        flowName: serverState.active.flowName,
+        awaiting: serverState.active.awaiting ?? null,
+        awaitingSlot: serverState.active.awaitingSlot ?? null,
+        awaitingQuestion: serverState.active.awaitingQuestion ?? null,
+        awaitingConfirmation: Boolean(serverState.active.awaitingConfirmation),
+        riskLevel: serverState.active.riskLevel ?? null,
+      }
+    : null;
+  const paused = Array.isArray(serverState.paused)
+    ? serverState.paused.map((item) => item.flowName).filter(Boolean)
+    : [];
+  return {
+    active,
+    paused,
+    source: serverState.source ?? 'server',
+  };
 }
 
 export function applyTurnTextsToWorkflow(

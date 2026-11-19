@@ -13,6 +13,7 @@ from customer.plan.turn_plan import ClarifyReason
 from customer.prompts.history_builder import HistoryBuilder
 from customer.prompts.loader import load_prompt
 from customer.utils.llm_client import llm
+from customer.utils.observability import get_langchain_config
 
 
 class ClarifyResponse:
@@ -49,7 +50,8 @@ class ClarifyResponse:
                 "focused_object": focused_obj,
                 "history": history,
                 "user_message": user_msg_str
-            }
+            },
+            config=get_langchain_config("clarify_respond", ["clarify"]),
         )
 
         return [BotMessage(text=res)]

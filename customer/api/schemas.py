@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -18,20 +20,49 @@ class ChatRequest(BaseModel):
 class ChatMessage(BaseModel):
     text: str | None = None
     object: ChatObject | None = None
+    receipt: dict[str, Any] | None = None
+    event: dict[str, Any] | None = None
 
 
 class ChatResponse(BaseModel):
     sender_id: str
     message_id: str
     messages: list[ChatMessage]
+    workflow_state: dict[str, Any] | None = None
+    quick_replies: list[dict[str, str]] = []
 
 
 class HistoryMessage(BaseModel):
     role: str # user/bot
     text: str | None = None
     object: ChatObject | None = None
+    receipt: dict[str, Any] | None = None
+    event: dict[str, Any] | None = None
 
 
 class HistoryResponse(BaseModel):
     sender_id: str
     messages: list[HistoryMessage]
+    workflow_state: dict[str, Any] | None = None
+    quick_replies: list[dict[str, str]] = []
+
+
+class SessionTokenRequest(BaseModel):
+    customer_no: str
+
+
+class SessionTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "Bearer"
+    customer_no: str
+    expires_in: int
+
+
+class CustomerAssetsResponse(BaseModel):
+    customer_no: str
+    customer_name: str | None = None
+    risk_level: dict[str, Any] | None = None
+    accounts: list[dict[str, Any]] = []
+    credit_limits: list[dict[str, Any]] = []
+    wealth_positions: list[dict[str, Any]] = []
+    synced: bool = True

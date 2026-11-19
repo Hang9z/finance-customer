@@ -14,7 +14,7 @@ const LOAN_RE =
 
 const TICKET_RE = /工单编号为【(\w+)】（问题类型：(.+?)）/;
 
-const CARD_LOSS_RE = /【(\w+)】已成功办理紧急挂失（状态：(\w+)）/;
+const CARD_LOSS_RE = /【([\w*]+)】已成功办理紧急挂失（状态：(\w+)）/;
 
 const LOAN_PROGRESS_RE =
   /贷款申请编号【(\w+)】申请金额\s*([\d,.]+)\s*元，期限\s*(\d+)\s*个月，当前审批状态为【([^】]+)】(?:，提交时间：([^。]+))?/;
@@ -47,12 +47,205 @@ const TX_TYPE_LABELS: Record<string, string> = {
   withdrawal: '取现',
 };
 
+const MASKED_PAN_RE = /^(\d{4})\*+(\d{4})$/;
+
 export function formatCardNoDisplay(rawId: string): string {
-  const clean = rawId.replace(/\s+/g, '');
-  if (clean.length <= 4) {
-    return clean;
+  const clean = rawId.replace(/[\s-]+/g, '');
+  if (!clean) {
+    return '';
   }
-  return clean.replace(/(.{4})(?=.)/g, '$1 ');
+  const maskedMatch = MASKED_PAN_RE.exec(clean);
+  if (maskedMatch) {
+    return `${maskedMatch[1]} **** **** ${maskedMatch[2]}`;
+  }
+  if (/^\d{12,19}$/.test(clean)) {
+    return `${clean.slice(0, 4)} **** **** ${clean.slice(-4)}`;
+  }
+  if (clean.startsWith('ACC') && clean.length >= 10 && !clean.includes('*')) {
+    return `${clean.slice(0, 3)}****${clean.slice(-4)}`;
+  }
+  return clean;
+}
+
+function readStr(obj: Record<string, unknown>, key: string, fallback = ''): string {
+  const val = obj[key];
+  return typeof val === 'string' || typeof val === 'number' ? String(val) : fallback;
+}
+
+export function normalizeServerReceipt(
+  raw: Record<string, unknown> | null | undefined,
+  id: string,
+): ReceiptData | null {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+  const kind = readStr(raw, 'kind');
+  const createdAt = readStr(raw, 'createdAt') || formatTimestampLabel();
+
+  if (kind === 'balance') {
+    return {
+      id,
+      kind: 'balance',
+      title: '余额回单',
+      sealText: '已核验',
+      accountNo: readStr(raw, 'accountNo'),
+      availableBalance: readStr(raw, 'availableBalance', '0.00'),
+      currency: readStr(raw, 'currency', 'CNY'),
+      frozenAmount: readStr(raw, 'frozenAmount', '0.00'),
+      accountStatus: readStr(raw, 'accountStatus', '正常'),
+      createdAt,
+    };
+  }
+  if (kind === 'transactions') {
+    const rawRows = Array.isArray(raw.rows) ? raw.rows : [];
+    const rows: TransactionRow[] = rawRows
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+      .map((item) => {
+        const typeRaw = readStr(item, 'typeRaw', 'payment');
+        return {
+          time: readStr(item, 'time', '-'),
+          typeRaw,
+          typeLabel: readStr(item, 'typeLabel') || TX_TYPE_LABELS[typeRaw] || typeRaw,
+          amount: readStr(item, 'amount', '0.00'),
+          currency: readStr(item, 'currency', 'CNY'),
+          isCredit: typeof item.isCredit === 'boolean' ? item.isCredit : CREDIT_TYPES.has(typeRaw),
+          counterparty: readStr(item, 'counterparty', '-'),
+          status: readStr(item, 'status', '-'),
+        };
+      });
+    return {
+      id,
+      kind: 'transactions',
+      title: '交易流水单',
+      sealText: '已核验',
+      accountNo: readStr(raw, 'accountNo'),
+      totalCount: typeof raw.totalCount === 'number' ? raw.totalCount : rows.length,
+      rows,
+      createdAt,
+    };
+  }
+  if (kind === 'loan') {
+    return {
+      id,
+      kind: 'loan',
+      title: '贷款受理单',
+      sealText: '已受理',
+      applicationNo: readStr(raw, 'applicationNo'),
+      amount: readStr(raw, 'amount', '0.00'),
+      termMonths: readStr(raw, 'termMonths', '-'),
+      status: readStr(raw, 'status', 'submitted'),
+      createdAt,
+    };
+  }
+  if (kind === 'ticket') {
+    return {
+      id,
+      kind: 'ticket',
+      title: '工单回执',
+      sealText: '已登记',
+      ticketNo: readStr(raw, 'ticketNo'),
+      category: readStr(raw, 'category', '客服工单'),
+      createdAt,
+    };
+  }
+  if (kind === 'card_loss') {
+    return {
+      id,
+      kind: 'card_loss',
+      title: '挂失确认书',
+      sealText: '已止付',
+      cardNo: readStr(raw, 'cardNo'),
+      status: readStr(raw, 'status', 'loss_reported'),
+      createdAt,
+    };
+  }
+  if (kind === 'loan_progress') {
+    return {
+      id,
+      kind: 'loan_progress',
+      title: '贷款进度回执',
+      sealText: '已核验',
+      applicationNo: readStr(raw, 'applicationNo'),
+      amount: readStr(raw, 'amount', '0.00'),
+      termMonths: readStr(raw, 'termMonths', '-'),
+      status: readStr(raw, 'status', '-'),
+      submittedAt: readStr(raw, 'submittedAt', '-'),
+      createdAt,
+    };
+  }
+  if (kind === 'ticket_progress') {
+    return {
+      id,
+      kind: 'ticket_progress',
+      title: '工单进度回执',
+      sealText: '已核验',
+      ticketNo: readStr(raw, 'ticketNo'),
+      category: readStr(raw, 'category', '客服工单'),
+      status: readStr(raw, 'status', '-'),
+      handlerName: readStr(raw, 'handlerName', '专席客服'),
+      submittedAt: readStr(raw, 'submittedAt', '-'),
+      createdAt,
+    };
+  }
+  if (kind === 'credit_limit') {
+    const rawItems = Array.isArray(raw.items) ? raw.items : [];
+    const items = rawItems
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+      .map((item) => ({
+        limitNo: readStr(item, 'limitNo', '-'),
+        productCode: readStr(item, 'productCode', 'LOAN'),
+        totalAmount: readStr(item, 'totalAmount', '0.00'),
+        availableAmount: readStr(item, 'availableAmount', '0.00'),
+        frozenAmount: readStr(item, 'frozenAmount', '0.00'),
+        validTo: readStr(item, 'validTo', '-'),
+      }));
+    return {
+      id,
+      kind: 'credit_limit',
+      title: '授信额度凭证',
+      sealText: '已核验',
+      customerNo: readStr(raw, 'customerNo'),
+      items,
+      createdAt,
+    };
+  }
+  if (kind === 'repayment_plan') {
+    const rawBills = Array.isArray(raw.bills) ? raw.bills : [];
+    const bills = rawBills
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+      .map((item) => ({
+        billNo: readStr(item, 'billNo', '-'),
+        outstandingAmount: readStr(item, 'outstandingAmount', '0.00'),
+        paidAmount: readStr(item, 'paidAmount', '0.00'),
+        status: readStr(item, 'status', '待还款'),
+      }));
+    return {
+      id,
+      kind: 'repayment_plan',
+      title: '还款账单凭证',
+      sealText: '已核验',
+      scopeLabel: readStr(raw, 'scopeLabel'),
+      billCount: typeof raw.billCount === 'number' ? raw.billCount : bills.length,
+      overdueCount: typeof raw.overdueCount === 'number' ? raw.overdueCount : 0,
+      bills,
+      createdAt,
+    };
+  }
+  if (kind === 'loan_repayment') {
+    return {
+      id,
+      kind: 'loan_repayment',
+      title: '贷款还款回执',
+      sealText: '已入账',
+      repaymentNo: readStr(raw, 'repaymentNo'),
+      billNo: readStr(raw, 'billNo'),
+      accountNo: readStr(raw, 'accountNo'),
+      amount: readStr(raw, 'amount', '0.00'),
+      status: readStr(raw, 'status', 'success'),
+      createdAt,
+    };
+  }
+  return null;
 }
 
 export function formatTimestampLabel(): string {

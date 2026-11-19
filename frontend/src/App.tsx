@@ -13,7 +13,12 @@ export const App: React.FC = () => {
     timeline,
     receipts,
     workflow,
+    quickReplies,
+    streamStageLabel,
     walletCards,
+    creditLimits,
+    assetsSynced,
+    awaitingSlot,
     awaitingAccountQuestion,
     isLoadingHistory,
     isSending,
@@ -90,6 +95,9 @@ export const App: React.FC = () => {
 
           <Conversation
             timeline={timeline}
+            workflow={workflow}
+            quickReplies={quickReplies}
+            streamStageLabel={streamStageLabel}
             isLoadingHistory={isLoadingHistory}
             isSending={isSending}
             engineOfflineBanner={engineOfflineBanner}
@@ -116,7 +124,10 @@ export const App: React.FC = () => {
           onCloseDrawer={() => setLedgerOpen(false)}
           flashHighlight={flashLedgerBorder}
           walletCards={walletCards}
+          creditLimits={creditLimits}
+          assetsSynced={assetsSynced}
           receipts={receipts}
+          awaitingSlot={awaitingSlot}
           awaitingAccountQuestion={awaitingAccountQuestion}
           isSending={isSending}
           onSubmitCard={(obj) => void sendObject(obj)}

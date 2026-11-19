@@ -1,10 +1,18 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Plus, Send } from 'lucide-react';
-import { ChatObject, ObjectCardType, WalletCard } from '../../types/chat';
+import { ChevronDown, ChevronUp, Plus, RefreshCw, Send } from 'lucide-react';
+import {
+  ChatObject,
+  CustomerCreditLimit,
+  ObjectCardType,
+  WalletCard,
+} from '../../types/chat';
 import { PhysicalCardPreview } from '../cards/PhysicalCardPreview';
 
 interface CardWalletProps {
   cards: WalletCard[];
+  creditLimits: CustomerCreditLimit[];
+  assetsSynced: boolean;
+  awaitingSlot: string | null;
   awaitingAccountQuestion: string | null;
   isSending: boolean;
   onSubmitCard: (obj: ChatObject) => void;
@@ -24,6 +32,9 @@ const CUSTOM_TYPE_OPTIONS: Array<{ value: ObjectCardType; label: string }> = [
 
 export const CardWallet: React.FC<CardWalletProps> = ({
   cards,
+  creditLimits,
+  assetsSynced,
+  awaitingSlot,
   awaitingAccountQuestion,
   isSending,
   onSubmitCard,
@@ -137,18 +148,70 @@ export const CardWallet: React.FC<CardWalletProps> = ({
     );
   };
 
+  const recommendAccountGroup =
+    awaitingAccountQuestion !== null ||
+    awaitingSlot === 'account_no' ||
+    awaitingSlot === 'card_no';
+  const recommendRecordGroup =
+    awaitingSlot === 'application_no' || awaitingSlot === 'ticket_no';
+
   return (
     <div className="space-y-5">
+      {assetsSynced ? (
+        <div className="flex items-center justify-between text-[11px] text-ink-2 px-1">
+          <span className="inline-flex items-center gap-1 text-celadon font-medium">
+            <RefreshCw className="w-3 h-3" />
+            <span>中台实时同步</span>
+          </span>
+          <span>余额与额度来自真实中台</span>
+        </div>
+      ) : null}
+
+      {creditLimits.length > 0 ? (
+        <div className="bg-paper border border-hairline rounded-[8px] px-3 py-2.5 space-y-1.5">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="font-medium text-ink">名下有效授信额度</span>
+            <span className="text-mist tabular-mono">{creditLimits.length} 笔</span>
+          </div>
+          {creditLimits.map((limit) => (
+            <div
+              key={limit.limit_no}
+              className="flex items-center justify-between gap-2 text-[11px] border-t border-hairline pt-1.5 first:border-t-0 first:pt-0"
+            >
+              <div className="min-w-0">
+                <div className="tabular-mono text-ink font-medium truncate">
+                  {limit.product_code}
+                </div>
+                <div className="text-mist tabular-mono">
+                  有效期至 {limit.valid_to}
+                </div>
+              </div>
+              <div className="text-right shrink-0 tabular-mono">
+                <div className="text-ink font-semibold">
+                  可用 {limit.available_limit_amount} 元
+                </div>
+                <div className="text-mist">总额 {limit.total_limit_amount} 元</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       {awaitingAccountQuestion ? (
         <div className="bg-paper border border-seal/60 rounded-[8px] px-3 py-2 text-[12px] text-ink">
           <span className="font-medium text-seal">正在等待：</span>
           <span>{awaitingAccountQuestion}，点击卡片即可自动填写</span>
         </div>
+      ) : recommendRecordGroup ? (
+        <div className="bg-paper border border-seal/60 rounded-[8px] px-3 py-2 text-[12px] text-ink">
+          <span className="font-medium text-seal">正在等待单号：</span>
+          <span>点击下方贷款申请或工单卡片即可自动填槽查询进度</span>
+        </div>
       ) : null}
 
-      {renderGroup('账户与银行卡', accountCards, true)}
+      {renderGroup('账户与银行卡', accountCards, recommendAccountGroup)}
       {renderGroup('贷款与理财产品', productCards, false)}
-      {renderGroup('交易与工单', recordCards, false)}
+      {renderGroup('交易与工单', recordCards, recommendRecordGroup)}
 
       {/* 可折叠自定义卡片表单 */}
       <div className="pt-2 border-t border-hairline">

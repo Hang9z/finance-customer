@@ -11,6 +11,7 @@ from customer.actions.base import (
 )
 from customer.clients.finance_client import finance_client
 from customer.domain.state import DialogueState
+from customer.security.masking import mask_identifier
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ class CardLossAction(Action):
             )
             current_status = data.get("current_status", "loss_reported")
             resolved_account = str(data.get("account_no") or normalized_no)
+            masked_no = mask_identifier(normalized_no)
             return ActionResult(
                 result={
                     "card_no": normalized_no,
@@ -48,10 +50,17 @@ class CardLossAction(Action):
                     "status": current_status,
                     "status_history_id": data.get("status_history_id"),
                     "reply": (
-                        f"您的卡片/账户【{normalized_no}】已成功办理紧急挂失（状态：{current_status}），资金安全已受保护。"
+                        f"您的卡片/账户【{masked_no}】已成功办理紧急挂失（状态：{current_status}），资金安全已受保护。"
                         "如需解挂或补办新卡，请携带有效身份证件前往网点或在手机银行办理。"
                     ),
-                }
+                },
+                receipt={
+                    "kind": "card_loss",
+                    "title": "挂失确认书",
+                    "sealText": "已止付",
+                    "cardNo": masked_no,
+                    "status": str(current_status),
+                },
             )
         except Exception as e:
             logger.error("卡片挂失操作失败: %s", e)

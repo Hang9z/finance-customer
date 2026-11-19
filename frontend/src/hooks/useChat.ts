@@ -8,9 +8,10 @@ import {
 import {
   applyTurnTextsToWorkflow,
   createInitialWorkflowState,
+  mapServerWorkflowToState,
   parseTaskEvent,
 } from '../lib/events';
-import { parseReceiptsAndCleanMarkdown } from '../lib/receipts';
+import { normalizeServerReceipt, parseReceiptsAndCleanMarkdown } from '../lib/receipts';
 import {
   buildObjectRequest,
   buildTextRequest,
@@ -18,12 +19,16 @@ import {
   checkFinanceApiHealth,
   createMessageId,
   EngineOfflineError,
+  fetchCustomerAssets,
   fetchHistory,
-  sendChat,
+  sendChatStream,
 } from '../services/api';
 import {
   ChatMessage,
   ChatObject,
+  CustomerAssetAccount,
+  CustomerCreditLimit,
+  QuickReplyOption,
   ReceiptData,
   ServiceHealthStatus,
   TimelineItem,
@@ -45,14 +50,67 @@ function getInitialCustomerId(): string {
 
 function buildWalletForCustomer(
   customerId: string,
+  liveAccounts: CustomerAssetAccount[],
   customCards: WalletCard[],
   sessionTickets: WalletCard[],
+  sessionLoans: WalletCard[],
 ): WalletCard[] {
   const preset = CUSTOMER_PRESETS.find((c) => c.id === customerId);
   const baseCards = preset ? preset.cards : [];
-  const merged: WalletCard[] = [...baseCards, ...COMMON_WEALTH_CARDS];
 
-  for (const extra of [...customCards, ...sessionTickets]) {
+  const liveBalanceByAccount = new Map<string, string>();
+  for (const acc of liveAccounts) {
+    if (acc.account_no) {
+      liveBalanceByAccount.set(
+        acc.account_no,
+        `${acc.balance_amount} ${acc.currency_code || 'CNY'}`,
+      );
+    }
+  }
+
+  const hydratedPresets: WalletCard[] = baseCards.map((card) => {
+    if (card.type === 'account') {
+      const liveBal = liveBalanceByAccount.get(card.id);
+      if (liveBal) {
+        return { ...card, attributes: { ...card.attributes, balance: liveBal } };
+      }
+    }
+    if (card.type === 'card' && card.attributes.accountNo) {
+      const liveBal = liveBalanceByAccount.get(card.attributes.accountNo);
+      if (liveBal) {
+        return { ...card, attributes: { ...card.attributes, balance: liveBal } };
+      }
+    }
+    return card;
+  });
+
+  const extraLiveAccountCards: WalletCard[] = liveAccounts
+    .filter(
+      (acc) =>
+        acc.account_no &&
+        !hydratedPresets.some((card) => card.type === 'account' && card.id === acc.account_no),
+    )
+    .map((acc) => ({
+      type: 'account',
+      id: acc.account_no,
+      title: acc.account_product?.product_name || '银行活期账户',
+      attributes: {
+        balance: `${acc.balance_amount} ${acc.currency_code || 'CNY'}`,
+        status: '正常',
+        ...(acc.account_product?.product_code
+          ? { product: acc.account_product.product_code }
+          : {}),
+      },
+      questionPrompt: `帮我查询账户 ${acc.account_no} 的余额和近期交易流水。`,
+    }));
+
+  const merged: WalletCard[] = [
+    ...hydratedPresets,
+    ...extraLiveAccountCards,
+    ...COMMON_WEALTH_CARDS,
+  ];
+
+  for (const extra of [...customCards, ...sessionLoans, ...sessionTickets]) {
     if (!merged.some((item) => item.type === extra.type && item.id === extra.id)) {
       merged.push(extra);
     }
@@ -60,11 +118,98 @@ function buildWalletForCustomer(
   return merged;
 }
 
+const TX_RAW_LINE_RE = /^\d+\.\s*\[[^\]]+\]\s+\S+\s+[\d,.]+\s+\S+\s*\|/;
+
+interface ProcessedBotMessage {
+  item: TimelineItem;
+  receipts: ReceiptData[];
+  discoveredTickets: Array<{ ticketNo: string; category: string }>;
+  discoveredLoans: Array<{ applicationNo: string; amount: string; status: string }>;
+  rawText: string;
+}
+
+function processServerBotMessage(
+  msg: { text?: string | null; receipt?: Record<string, unknown> | null; event?: ChatMessage['event'] },
+  itemId: string,
+): ProcessedBotMessage | null {
+  const rawText = msg.text ?? '';
+  const serverEvent = msg.event ?? (rawText ? parseTaskEvent(rawText) : null);
+  if (serverEvent) {
+    return {
+      item: { id: itemId, kind: 'event', event: serverEvent },
+      receipts: [],
+      discoveredTickets: [],
+      discoveredLoans: [],
+      rawText,
+    };
+  }
+  if (!rawText && !msg.receipt) {
+    return null;
+  }
+
+  const discoveredTickets: Array<{ ticketNo: string; category: string }> = [];
+  const discoveredLoans: Array<{ applicationNo: string; amount: string; status: string }> = [];
+
+  if (msg.receipt) {
+    const receipt = normalizeServerReceipt(msg.receipt, `${itemId}_srv`);
+    if (receipt) {
+      let cleanMarkdown = rawText;
+      if (receipt.kind === 'transactions') {
+        cleanMarkdown = rawText
+          .split(/\r?\n/)
+          .filter((line) => !TX_RAW_LINE_RE.test(line.trim()))
+          .join('\n')
+          .trim();
+      } else if (receipt.kind === 'ticket') {
+        discoveredTickets.push({ ticketNo: receipt.ticketNo, category: receipt.category });
+      } else if (receipt.kind === 'loan') {
+        discoveredLoans.push({
+          applicationNo: receipt.applicationNo,
+          amount: receipt.amount,
+          status: receipt.status,
+        });
+      }
+      return {
+        item: { id: itemId, kind: 'bot', text: cleanMarkdown, receipts: [receipt] },
+        receipts: [receipt],
+        discoveredTickets,
+        discoveredLoans,
+        rawText,
+      };
+    }
+  }
+
+  const parsed = parseReceiptsAndCleanMarkdown(rawText, itemId);
+  for (const rcpt of parsed.receipts) {
+    if (rcpt.kind === 'loan') {
+      discoveredLoans.push({
+        applicationNo: rcpt.applicationNo,
+        amount: rcpt.amount,
+        status: rcpt.status,
+      });
+    }
+  }
+  return {
+    item: {
+      id: itemId,
+      kind: 'bot',
+      text: parsed.cleanMarkdown,
+      receipts: parsed.receipts,
+    },
+    receipts: parsed.receipts,
+    discoveredTickets: parsed.discoveredTickets,
+    discoveredLoans,
+    rawText,
+  };
+}
+
 export function useChat() {
   const [customerId, setCustomerId] = useState<string>(getInitialCustomerId);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [receipts, setReceipts] = useState<ReceiptData[]>([]);
   const [workflow, setWorkflow] = useState<WorkflowState>(createInitialWorkflowState);
+  const [quickReplies, setQuickReplies] = useState<QuickReplyOption[]>([]);
+  const [streamStageLabel, setStreamStageLabel] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [engineStatus, setEngineStatus] = useState<ServiceHealthStatus>('checking');
@@ -72,9 +217,14 @@ export function useChat() {
   const [engineOfflineBanner, setEngineOfflineBanner] = useState<boolean>(false);
   const [customCards, setCustomCards] = useState<WalletCard[]>([]);
   const [sessionTickets, setSessionTickets] = useState<WalletCard[]>([]);
+  const [sessionLoans, setSessionLoans] = useState<WalletCard[]>([]);
+  const [liveAccounts, setLiveAccounts] = useState<CustomerAssetAccount[]>([]);
+  const [creditLimits, setCreditLimits] = useState<CustomerCreditLimit[]>([]);
+  const [assetsSynced, setAssetsSynced] = useState<boolean>(false);
 
   const activeCustomerRef = useRef<string>(customerId);
   const historyAbortRef = useRef<AbortController | null>(null);
+  const assetsAbortRef = useRef<AbortController | null>(null);
   const sendAbortRef = useRef<AbortController | null>(null);
   const isSendingRef = useRef<boolean>(false);
 
@@ -82,30 +232,65 @@ export function useChat() {
     activeCustomerRef.current = customerId;
   }, [customerId]);
 
-  const appendTicketsFromDiscovered = useCallback(
-    (tickets: Array<{ ticketNo: string; category: string }>) => {
-      if (tickets.length === 0) {
-        return;
-      }
-      setSessionTickets((prev) => {
-        const next = [...prev];
-        for (const tkt of tickets) {
-          if (!next.some((item) => item.id === tkt.ticketNo)) {
-            next.push({
-              type: 'ticket',
-              id: tkt.ticketNo,
-              title: `工单 · ${tkt.category}`,
-              attributes: { category: tkt.category, status: '已登记' },
-              questionPrompt: `请帮我查询工单 ${tkt.ticketNo} 的当前处理进度。`,
-              isSessionTicket: true,
-            });
+  const appendDiscoveredCards = useCallback(
+    (
+      tickets: Array<{ ticketNo: string; category: string }>,
+      loans: Array<{ applicationNo: string; amount: string; status: string }>,
+    ) => {
+      if (tickets.length > 0) {
+        setSessionTickets((prev) => {
+          const next = [...prev];
+          for (const tkt of tickets) {
+            if (!next.some((item) => item.id === tkt.ticketNo)) {
+              next.push({
+                type: 'ticket',
+                id: tkt.ticketNo,
+                title: `工单 · ${tkt.category}`,
+                attributes: { category: tkt.category, status: '已登记' },
+                questionPrompt: `请帮我查询工单 ${tkt.ticketNo} 的当前处理进度。`,
+                isSessionTicket: true,
+              });
+            }
           }
-        }
-        return next;
-      });
+          return next;
+        });
+      }
+      if (loans.length > 0) {
+        setSessionLoans((prev) => {
+          const next = [...prev];
+          for (const loan of loans) {
+            if (!next.some((item) => item.id === loan.applicationNo)) {
+              next.push({
+                type: 'loan_application',
+                id: loan.applicationNo,
+                title: '消费贷款申请',
+                attributes: { amount: `${loan.amount} 元`, status: loan.status },
+                questionPrompt: `请帮我查询贷款申请 ${loan.applicationNo} 的审批进度。`,
+              });
+            }
+          }
+          return next;
+        });
+      }
     },
     [],
   );
+
+  const loadCustomerAssets = useCallback(async (targetCustomerId: string) => {
+    if (assetsAbortRef.current) {
+      assetsAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    assetsAbortRef.current = controller;
+
+    const assets = await fetchCustomerAssets(targetCustomerId, controller.signal);
+    if (activeCustomerRef.current !== targetCustomerId || !assets) {
+      return;
+    }
+    setLiveAccounts(assets.accounts ?? []);
+    setCreditLimits(assets.credit_limits ?? []);
+    setAssetsSynced(Boolean(assets.synced));
+  }, []);
 
   const loadHistory = useCallback(
     async (targetCustomerId: string) => {
@@ -128,6 +313,7 @@ export function useChat() {
         const nextTimeline: TimelineItem[] = [];
         const nextReceipts: ReceiptData[] = [];
         const allDiscoveredTickets: Array<{ ticketNo: string; category: string }> = [];
+        const allDiscoveredLoans: Array<{ applicationNo: string; amount: string; status: string }> = [];
         let nextWorkflow = createInitialWorkflowState();
         let currentTurnBotTexts: string[] = [];
 
@@ -151,32 +337,26 @@ export function useChat() {
               status: 'sent',
             });
           } else {
-            const rawText = msg.text ?? '';
-            if (rawText) {
-              currentTurnBotTexts.push(rawText);
-              const event = parseTaskEvent(rawText);
-              if (event) {
-                nextTimeline.push({ id: itemId, kind: 'event', event });
-              } else {
-                const parsed = parseReceiptsAndCleanMarkdown(rawText, itemId);
-                nextTimeline.push({
-                  id: itemId,
-                  kind: 'bot',
-                  text: parsed.cleanMarkdown,
-                  receipts: parsed.receipts,
-                });
-                nextReceipts.push(...parsed.receipts);
-                allDiscoveredTickets.push(...parsed.discoveredTickets);
+            const processed = processServerBotMessage(msg, itemId);
+            if (processed) {
+              if (processed.rawText) {
+                currentTurnBotTexts.push(processed.rawText);
               }
+              nextTimeline.push(processed.item);
+              nextReceipts.push(...processed.receipts);
+              allDiscoveredTickets.push(...processed.discoveredTickets);
+              allDiscoveredLoans.push(...processed.discoveredLoans);
             }
           }
         });
         flushTurn();
 
+        const serverWorkflow = mapServerWorkflowToState(data.workflow_state);
         setTimeline(nextTimeline);
         setReceipts(nextReceipts);
-        setWorkflow(nextWorkflow);
-        appendTicketsFromDiscovered(allDiscoveredTickets);
+        setWorkflow(serverWorkflow ?? nextWorkflow);
+        setQuickReplies(data.quick_replies ?? []);
+        appendDiscoveredCards(allDiscoveredTickets, allDiscoveredLoans);
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') {
           return;
@@ -194,7 +374,7 @@ export function useChat() {
         }
       }
     },
-    [appendTicketsFromDiscovered],
+    [appendDiscoveredCards],
   );
 
   const runHealthChecks = useCallback(async () => {
@@ -221,7 +401,8 @@ export function useChat() {
 
   useEffect(() => {
     void loadHistory(customerId);
-  }, [customerId, loadHistory]);
+    void loadCustomerAssets(customerId);
+  }, [customerId, loadCustomerAssets, loadHistory]);
 
   const switchCustomer = useCallback((nextId: string) => {
     const trimmed = nextId.trim();
@@ -232,6 +413,9 @@ export function useChat() {
     if (historyAbortRef.current) {
       historyAbortRef.current.abort();
     }
+    if (assetsAbortRef.current) {
+      assetsAbortRef.current.abort();
+    }
     if (sendAbortRef.current) {
       sendAbortRef.current.abort();
       sendAbortRef.current = null;
@@ -239,9 +423,15 @@ export function useChat() {
 
     isSendingRef.current = false;
     setIsSending(false);
+    setStreamStageLabel(null);
     setTimeline([]);
     setReceipts([]);
     setSessionTickets([]);
+    setSessionLoans([]);
+    setLiveAccounts([]);
+    setCreditLimits([]);
+    setAssetsSynced(false);
+    setQuickReplies([]);
     setWorkflow(createInitialWorkflowState());
     activeCustomerRef.current = trimmed;
 
@@ -258,49 +448,64 @@ export function useChat() {
     setTimeline([]);
     setReceipts([]);
     setSessionTickets([]);
+    setSessionLoans([]);
+    setQuickReplies([]);
+    setStreamStageLabel(null);
     setWorkflow(createInitialWorkflowState());
   }, []);
 
   const appendBotMessages = useCallback(
-    (botMessages: ChatMessage[], baseMsgId: string) => {
+    (
+      botMessages: ChatMessage[],
+      baseMsgId: string,
+      streamingItemId: string,
+      serverWorkflowState?: Parameters<typeof mapServerWorkflowToState>[0],
+      nextQuickReplies?: QuickReplyOption[],
+    ) => {
       const botTexts: string[] = [];
       const newItems: TimelineItem[] = [];
       const newReceipts: ReceiptData[] = [];
       const discoveredTickets: Array<{ ticketNo: string; category: string }> = [];
+      const discoveredLoans: Array<{ applicationNo: string; amount: string; status: string }> = [];
 
       botMessages.forEach((msg, idx) => {
-        const rawText = msg.text ?? '';
-        if (!rawText) {
-          return;
-        }
-        botTexts.push(rawText);
-        const itemId = `${baseMsgId}_bot_${idx}`;
-        const event = parseTaskEvent(rawText);
-        if (event) {
-          newItems.push({ id: itemId, kind: 'event', event });
-        } else {
-          const parsed = parseReceiptsAndCleanMarkdown(rawText, itemId);
-          newItems.push({
-            id: itemId,
-            kind: 'bot',
-            text: parsed.cleanMarkdown,
-            receipts: parsed.receipts,
-          });
-          newReceipts.push(...parsed.receipts);
-          discoveredTickets.push(...parsed.discoveredTickets);
+        const processed = processServerBotMessage(msg, `${baseMsgId}_bot_${idx}`);
+        if (processed) {
+          if (processed.rawText) {
+            botTexts.push(processed.rawText);
+          }
+          newItems.push(processed.item);
+          newReceipts.push(...processed.receipts);
+          discoveredTickets.push(...processed.discoveredTickets);
+          discoveredLoans.push(...processed.discoveredLoans);
         }
       });
 
-      setTimeline((prev) => [...prev, ...newItems]);
+      setTimeline((prev) => [
+        ...prev.filter((item) => item.id !== streamingItemId),
+        ...newItems,
+      ]);
       if (newReceipts.length > 0) {
         setReceipts((prev) => [...prev, ...newReceipts]);
       }
-      if (discoveredTickets.length > 0) {
-        appendTicketsFromDiscovered(discoveredTickets);
+      appendDiscoveredCards(discoveredTickets, discoveredLoans);
+
+      const mappedServer = mapServerWorkflowToState(serverWorkflowState);
+      if (mappedServer) {
+        setWorkflow(mappedServer);
+      } else {
+        setWorkflow((prev) => applyTurnTextsToWorkflow(prev, botTexts));
       }
-      setWorkflow((prev) => applyTurnTextsToWorkflow(prev, botTexts));
+      setQuickReplies(nextQuickReplies ?? []);
+
+      return newReceipts.some(
+        (rcpt) =>
+          rcpt.kind === 'loan' ||
+          rcpt.kind === 'card_loss' ||
+          rcpt.kind === 'loan_repayment',
+      );
     },
-    [appendTicketsFromDiscovered],
+    [appendDiscoveredCards],
   );
 
   const sendPayload = useCallback(
@@ -315,6 +520,7 @@ export function useChat() {
       const targetCustomerId = activeCustomerRef.current;
       const newMsgId = createMessageId();
       const itemId = reuseTimelineId ?? `user_${newMsgId}`;
+      const streamingItemId = `${newMsgId}_stream`;
 
       if (reuseTimelineId) {
         setTimeline((prev) =>
@@ -342,13 +548,53 @@ export function useChat() {
       sendAbortRef.current = controller;
       isSendingRef.current = true;
       setIsSending(true);
+      setQuickReplies([]);
+      setStreamStageLabel('正在建立安全会话...');
+
+      let accumulatedDelta = '';
 
       try {
         const request = options.object
           ? buildObjectRequest(targetCustomerId, options.object, newMsgId)
           : buildTextRequest(targetCustomerId, (options.text ?? '').trim(), newMsgId);
 
-        const response = await sendChat(request, controller.signal);
+        const response = await sendChatStream(
+          request,
+          {
+            onStage: (_stage, label) => {
+              if (activeCustomerRef.current === targetCustomerId) {
+                setStreamStageLabel(label || null);
+              }
+            },
+            onDelta: (chunk) => {
+              if (activeCustomerRef.current !== targetCustomerId) {
+                return;
+              }
+              accumulatedDelta += chunk;
+              setTimeline((prev) => {
+                const exists = prev.some((item) => item.id === streamingItemId);
+                if (exists) {
+                  return prev.map((item) =>
+                    item.id === streamingItemId && item.kind === 'bot'
+                      ? { ...item, text: accumulatedDelta }
+                      : item,
+                  );
+                }
+                return [
+                  ...prev,
+                  {
+                    id: streamingItemId,
+                    kind: 'bot',
+                    text: accumulatedDelta,
+                    receipts: [],
+                    streaming: true,
+                  },
+                ];
+              });
+            },
+          },
+          controller.signal,
+        );
 
         // 切换客户后丢弃旧客户的迟到响应
         if (activeCustomerRef.current !== targetCustomerId) {
@@ -357,33 +603,37 @@ export function useChat() {
 
         setEngineStatus('online');
         setEngineOfflineBanner(false);
-        appendBotMessages(response.messages, newMsgId);
+        const shouldRefreshAssets = appendBotMessages(
+          response.messages,
+          newMsgId,
+          streamingItemId,
+          response.workflow_state,
+          response.quick_replies,
+        );
+        if (shouldRefreshAssets) {
+          void loadCustomerAssets(targetCustomerId);
+        }
         return true;
       } catch (err) {
         if (activeCustomerRef.current !== targetCustomerId) {
           return false;
         }
-        if (err instanceof DOMException && err.name === 'AbortError') {
-          setTimeline((prev) =>
-            prev.map((item) =>
+        setTimeline((prev) =>
+          prev
+            .filter((item) => item.id !== streamingItemId)
+            .map((item) =>
               item.id === itemId && item.kind === 'user'
                 ? { ...item, status: 'failed' }
                 : item,
             ),
-          );
+        );
+        if (err instanceof DOMException && err.name === 'AbortError') {
           return false;
         }
         if (err instanceof EngineOfflineError) {
           setEngineStatus('offline');
           setEngineOfflineBanner(true);
         }
-        setTimeline((prev) =>
-          prev.map((item) =>
-            item.id === itemId && item.kind === 'user'
-              ? { ...item, status: 'failed' }
-              : item,
-          ),
-        );
         return false;
       } finally {
         if (sendAbortRef.current === controller) {
@@ -392,10 +642,11 @@ export function useChat() {
         if (activeCustomerRef.current === targetCustomerId) {
           isSendingRef.current = false;
           setIsSending(false);
+          setStreamStageLabel(null);
         }
       }
     },
-    [appendBotMessages],
+    [appendBotMessages, loadCustomerAssets],
   );
 
   const sendText = useCallback(
@@ -443,11 +694,23 @@ export function useChat() {
   }, []);
 
   const walletCards = useMemo(
-    () => buildWalletForCustomer(customerId, customCards, sessionTickets),
-    [customerId, customCards, sessionTickets],
+    () =>
+      buildWalletForCustomer(
+        customerId,
+        liveAccounts,
+        customCards,
+        sessionTickets,
+        sessionLoans,
+      ),
+    [customerId, liveAccounts, customCards, sessionTickets, sessionLoans],
   );
 
+  const awaitingSlot = workflow.active?.awaitingSlot ?? null;
+
   const awaitingAccountQuestion = useMemo(() => {
+    if (awaitingSlot === 'account_no' || awaitingSlot === 'card_no') {
+      return workflow.active?.awaitingQuestion ?? '请提供银行卡号或账户号';
+    }
     const lastBot = [...timeline]
       .reverse()
       .find((item): item is Extract<TimelineItem, { kind: 'bot' }> => item.kind === 'bot');
@@ -460,14 +723,19 @@ export function useChat() {
       return question;
     }
     return null;
-  }, [timeline, workflow.active]);
+  }, [awaitingSlot, timeline, workflow.active]);
 
   return {
     customerId,
     timeline,
     receipts,
     workflow,
+    quickReplies,
+    streamStageLabel,
     walletCards,
+    creditLimits,
+    assetsSynced,
+    awaitingSlot,
     awaitingAccountQuestion,
     isLoadingHistory,
     isSending,
@@ -475,7 +743,10 @@ export function useChat() {
     financeStatus,
     engineOfflineBanner,
     switchCustomer,
-    refreshHistory: () => loadHistory(customerId),
+    refreshHistory: () => {
+      void loadHistory(customerId);
+      return loadCustomerAssets(customerId);
+    },
     reconnectEngine: runHealthChecks,
     clearLocalView,
     sendText,

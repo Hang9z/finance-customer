@@ -24,16 +24,26 @@ export const WorkflowStrip: React.FC<WorkflowStripProps> = ({
           <>
             {workflow.active ? (
               <span className="inline-flex items-center gap-1.5 text-ink font-medium">
-                <span className="w-2 h-2 rounded-full bg-ink shrink-0" />
+                <span
+                  className={`w-2 h-2 rounded-full shrink-0 ${
+                    workflow.active.awaitingConfirmation ? 'bg-seal' : 'bg-ink'
+                  }`}
+                />
                 <span>
                   {workflow.active.flowName}
-                  <span className="text-ink-2 font-normal">
-                    （进行中
-                    {workflow.active.awaiting
-                      ? ` · 等待：${workflow.active.awaiting}`
-                      : ''}
-                    ）
-                  </span>
+                  {workflow.active.awaitingConfirmation ? (
+                    <span className="ml-1.5 px-1.5 py-0.5 rounded bg-seal/10 text-seal text-[11px] font-medium">
+                      待用户确认
+                    </span>
+                  ) : (
+                    <span className="text-ink-2 font-normal">
+                      （进行中
+                      {workflow.active.awaiting
+                        ? ` · 等待：${workflow.active.awaiting}`
+                        : ''}
+                      ）
+                    </span>
+                  )}
                 </span>
               </span>
             ) : null}
@@ -62,7 +72,7 @@ export const WorkflowStrip: React.FC<WorkflowStripProps> = ({
       </div>
 
       <span className="text-[11px] text-mist shrink-0 hidden sm:inline">
-        根据会话事件推断
+        {workflow.source === 'server' ? '实时流程同步' : '根据会话事件推断'}
       </span>
     </div>
   );

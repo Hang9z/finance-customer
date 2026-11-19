@@ -6,10 +6,17 @@ import {
   CheckCircle2,
   Play,
   RotateCcw,
+  ShieldAlert,
   XCircle,
 } from 'lucide-react';
 import { OBJECT_SLOT_MAP } from '../../constants/presets';
-import { TaskEventInfo, TimelineItem, WalletCard } from '../../types/chat';
+import {
+  QuickReplyOption,
+  TaskEventInfo,
+  TimelineItem,
+  WalletCard,
+  WorkflowState,
+} from '../../types/chat';
 import { PhysicalCardPreview } from '../cards/PhysicalCardPreview';
 import { ReceiptCard } from '../receipts/ReceiptCard';
 import { EmptyState } from './EmptyState';
@@ -19,6 +26,9 @@ const THINKING_PHASES = ['理解意图', '推进流程', '查询中台'];
 
 interface ConversationProps {
   timeline: TimelineItem[];
+  workflow: WorkflowState;
+  quickReplies: QuickReplyOption[];
+  streamStageLabel: string | null;
   isLoadingHistory: boolean;
   isSending: boolean;
   engineOfflineBanner: boolean;
@@ -60,6 +70,9 @@ const TaskEventDivider: React.FC<{ event: TaskEventInfo }> = ({ event }) => {
 
 export const Conversation: React.FC<ConversationProps> = ({
   timeline,
+  workflow,
+  quickReplies,
+  streamStageLabel,
   isLoadingHistory,
   isSending,
   engineOfflineBanner,
@@ -245,6 +258,12 @@ export const Conversation: React.FC<ConversationProps> = ({
                   {item.text ? (
                     <div className="max-w-[88%] bg-surface border border-hairline rounded-[14px] rounded-bl-[4px] px-4 py-3">
                       <InlineMarkdown content={item.text} />
+                      {item.streaming ? (
+                        <span
+                          className="inline-block w-1.5 h-4 ml-1 align-middle bg-seal/70 animate-pulse rounded-sm"
+                          aria-hidden="true"
+                        />
+                      ) : null}
                     </div>
                   ) : null}
 
@@ -261,7 +280,49 @@ export const Conversation: React.FC<ConversationProps> = ({
             })
           )}
 
-          {isSending ? (
+          {!isSending && !isLoadingHistory && workflow.active?.awaitingConfirmation ? (
+            <div className="bg-surface border border-seal/60 rounded-[12px] px-4 py-3 flex flex-wrap items-center justify-between gap-3 animate-message-enter">
+              <div className="flex items-center gap-2 text-[13px] text-ink">
+                <ShieldAlert className="w-4 h-4 text-seal shrink-0" />
+                <span>高风险金融业务操作，请核对上方摘要后确认提交</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onSelectPrompt('取消')}
+                  className="px-3 py-1.5 rounded-[8px] border border-hairline bg-paper text-[12px] text-ink-2 hover:text-ink hover:border-ink transition-colors"
+                >
+                  取消操作
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSelectPrompt('确认办理')}
+                  className="px-3.5 py-1.5 rounded-[8px] bg-seal text-white text-[12px] font-medium hover:opacity-90 transition-opacity"
+                >
+                  确认办理
+                </button>
+              </div>
+            </div>
+          ) : !isSending && !isLoadingHistory && quickReplies.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 pt-1 animate-message-enter" aria-label="快捷回复选项">
+              {quickReplies.map((opt) => (
+                <button
+                  key={`${opt.label}_${opt.value}`}
+                  type="button"
+                  onClick={() => onSelectPrompt(opt.value)}
+                  className={`px-3 py-1.5 rounded-full text-[12px] border transition-colors ${
+                    opt.variant === 'danger'
+                      ? 'border-seal text-seal bg-surface hover:bg-seal hover:text-white'
+                      : 'border-hairline bg-surface text-ink hover:border-ink hover:bg-paper'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {isSending && !timeline.some((t) => t.kind === 'bot' && t.streaming) ? (
             <div className="flex items-center gap-3 py-2 animate-message-enter">
               <div className="bg-surface border border-hairline rounded-[14px] rounded-bl-[4px] px-4 py-2.5 inline-flex items-center gap-3">
                 <div className="flex items-center gap-1" aria-hidden="true">
@@ -270,7 +331,7 @@ export const Conversation: React.FC<ConversationProps> = ({
                   <span className="w-1.5 h-1.5 rounded-full bg-ink thinking-dot-3" />
                 </div>
                 <span className="text-[12px] text-ink-2">
-                  {THINKING_PHASES[thinkingIdx]}
+                  {streamStageLabel || THINKING_PHASES[thinkingIdx]}
                 </span>
               </div>
             </div>

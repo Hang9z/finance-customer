@@ -7,6 +7,7 @@ from customer.domain.state import DialogueState
 from customer.prompts.history_builder import HistoryBuilder
 from customer.handlers.task.response.task_response_template import ResponseTemplate, ResponseMode
 from customer.utils.llm_client import llm
+from customer.utils.observability import get_langchain_config
 
 
 class ResponseRender:
@@ -35,7 +36,8 @@ class ResponseRender:
                     "history": HistoryBuilder.build(state.shared.sessions[-1].turns),
                     "user_message": HistoryBuilder.render_user_message(user_message),
                     "current_response": render_text
-                }
+                },
+                config=get_langchain_config("task_rephrase", ["task"]),
             )
             return BotMessage(text=result)
 

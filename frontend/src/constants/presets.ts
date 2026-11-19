@@ -205,16 +205,34 @@ export const BUSINESS_SCENARIOS: ScenarioPromptItem[] = [
     description: '支持银行卡号或账户号拉取中台实时流水明细',
   },
   {
+    id: 'credit_limit',
+    title: '授信额度查询',
+    prompt: '帮我查一下我还有多少可用贷款授信额度',
+    description: '实时拉取客户名下授信额度、冻结金额及有效期',
+  },
+  {
     id: 'loan',
     title: '消费贷款申请',
     prompt: '我要申请消费贷款',
-    description: '多轮收集贷款金额、还款期数并提交中台进件',
+    description: '多轮收集贷款金额、还款期数并经确认后提交中台进件',
   },
   {
     id: 'loan_progress',
     title: '贷款进度查询',
     prompt: '帮我查一下贷款申请 LAP20261118155946689466 的审批进度',
     description: '按贷款申请编号实时查询审批进展与合同状态',
+  },
+  {
+    id: 'repayment_plan',
+    title: '还款账单与逾期',
+    prompt: '查一下我的贷款还款账单、还款计划和有没有逾期',
+    description: '一键查询近期账单、还款计划及逾期状态',
+  },
+  {
+    id: 'loan_repayment',
+    title: '贷款账单还款',
+    prompt: '我要办理贷款还款',
+    description: '引导填写账单号、扣款账户及金额并二次确认后扣款入账',
   },
   {
     id: 'card_loss',

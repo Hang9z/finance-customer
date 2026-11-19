@@ -10,6 +10,7 @@ class FlowStepType(Enum):
     ACTION = "action"
     RESPONSE = "response"
     COLLECT = "collect"
+    CONFIRM = "confirm"
     END = "end"
 
 @dataclass
@@ -97,6 +98,7 @@ class ResponseFlowStep(FlowStep):
 class CollectSlotStep(FlowStep):
     slot_name: str = ""
     template: ResponseTemplate = field(default_factory=ResponseTemplate)
+    quick_replies: list[dict[str, str]] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, flow_step_data: dict[str, Any]) -> "CollectSlotStep":
@@ -104,8 +106,37 @@ class CollectSlotStep(FlowStep):
         return cls(
             **FlowStep.base_fields(flow_step_data),
             slot_name=flow_step_data['slot_name'],
-            template=ResponseTemplate.from_dict(flow_step_data['template'])
+            template=ResponseTemplate.from_dict(flow_step_data['template']),
+            quick_replies=list(flow_step_data.get('quick_replies', [])),
         )
+
+
+@dataclass
+class ConfirmFlowStep(FlowStep):
+    """高风险写操作前的二次确认步骤."""
+
+    confirm_slot: str = "_confirmed"
+    risk_level: str = "high"
+    cancel_message: str = "好的，已为您取消本次操作。"
+    template: ResponseTemplate = field(default_factory=ResponseTemplate)
+    quick_replies: list[dict[str, str]] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, flow_step_data: dict[str, Any]) -> "ConfirmFlowStep":
+        default_replies = [
+            {"label": "确认办理", "value": "确认办理", "variant": "danger"},
+            {"label": "取消操作", "value": "取消", "variant": "secondary"},
+        ]
+        raw_replies = flow_step_data.get('quick_replies')
+        return cls(
+            **FlowStep.base_fields(flow_step_data),
+            confirm_slot=flow_step_data.get('confirm_slot', '_confirmed'),
+            risk_level=flow_step_data.get('risk_level', 'high'),
+            cancel_message=flow_step_data.get('cancel_message', '好的，已为您取消本次操作。'),
+            template=ResponseTemplate.from_dict(flow_step_data['template']),
+            quick_replies=list(raw_replies) if raw_replies is not None else default_replies,
+        )
+
 
 @dataclass
 class EndFlowStep(FlowStep):
@@ -117,6 +148,7 @@ class EndFlowStep(FlowStep):
 TYPE_TO_STEP_CLASS = {
     'start': StartFlowStep,
     'collect': CollectSlotStep,
+    'confirm': ConfirmFlowStep,
     'response': ResponseFlowStep,
     'action': ActionFlowStep,
     'end': EndFlowStep

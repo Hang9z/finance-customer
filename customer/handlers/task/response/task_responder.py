@@ -25,23 +25,44 @@ class TaskResponder:
         return flow_name
 
 
-    # 根据 event 生成不同的中文提示
+    # 根据 event 生成不同的中文提示与结构化事件载荷
     def execute_event_data(self, event: TaskEvent) -> BotMessage:
         if isinstance(event, TaskStarted):
             flow_name = self._get_flow_name(event.task.flow_id)
-            return BotMessage(text=f"好的, 现在开始执行{flow_name}")
+            raw_text = f"好的, 现在开始执行{flow_name}"
+            return BotMessage(
+                text=raw_text,
+                event={"kind": "start", "flow": flow_name, "rawText": raw_text},
+            )
 
         if isinstance(event, TaskSwitched):
             pre_flow_name = self._get_flow_name(event.previous.flow_id)
             current_flow_name = self._get_flow_name(event.current.flow_id)
-            return BotMessage(text=f"好的, 现在把{pre_flow_name}暂停, 现在开始执行{current_flow_name}")
+            raw_text = f"好的, 现在把{pre_flow_name}暂停, 现在开始执行{current_flow_name}"
+            return BotMessage(
+                text=raw_text,
+                event={
+                    "kind": "switch",
+                    "previousFlow": pre_flow_name,
+                    "flow": current_flow_name,
+                    "rawText": raw_text,
+                },
+            )
 
         if isinstance(event, TaskResumed):
             flow_name = self._get_flow_name(event.task.flow_id)
-            return BotMessage(text=f"好的, 现在继续{flow_name}")
+            raw_text = f"好的, 现在继续{flow_name}"
+            return BotMessage(
+                text=raw_text,
+                event={"kind": "resume", "flow": flow_name, "rawText": raw_text},
+            )
 
         if isinstance(event, TaskCanceled):
             flow_name = self._get_flow_name(event.task.flow_id)
-            return BotMessage(text=f"好的, 现在取消{flow_name}")
+            raw_text = f"好的, 现在取消{flow_name}"
+            return BotMessage(
+                text=raw_text,
+                event={"kind": "cancel", "flow": flow_name, "rawText": raw_text},
+            )
 
         return BotMessage(text="哈哈")

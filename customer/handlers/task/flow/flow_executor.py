@@ -1,11 +1,16 @@
+from collections.abc import Awaitable, Callable
+
+from jinja2 import Template
+
 from customer.domain.messages import UserMessage, BotMessage
 from customer.domain.state import DialogueState
 from customer.actions.action_runner import ActionRunner
 from customer.handlers.task.flow.links import FlowStepLink, ConditionalLink, FallbackLink
 from customer.handlers.task.flow.models import FlowCatalog, Flow, OBJECT_TYPE_SLOT_CANDIDATES
-from customer.handlers.task.flow.steps import FlowStep, StartFlowStep, ResponseFlowStep, CollectSlotStep, ActionFlowStep, \
+from customer.handlers.task.flow.steps import FlowStep, StartFlowStep, ResponseFlowStep, CollectSlotStep, ConfirmFlowStep, ActionFlowStep, \
     EndFlowStep
 from customer.handlers.task.response.task_response_render import ResponseRender
+from customer.security.masking import mask_identifier
 
 """
 根据 state 里面 active 的 step 开始推进流程实现
@@ -18,7 +23,8 @@ class FlowExecutor:
 
     async def execute(self, state: DialogueState,
                       user_message: UserMessage,
-                      flow_catalog: FlowCatalog) -> list[BotMessage]:
+                      flow_catalog: FlowCatalog,
+                      on_stage: Callable[[str, str], Awaitable[None]] | None = None) -> list[BotMessage]:
         bot_messages: list[BotMessage] = []
 
         # 判断 state 是否存在活跃任务
@@ -46,12 +52,16 @@ class FlowExecutor:
             使用技术 jinja2
             """
             if isinstance(step, ResponseFlowStep):
-                bot_message: BotMessage = await self.response_render.render(
+                bot_message: BotMessage | None = await self.response_render.render(
                     template=step.template,
                     state=state,
                     user_message=user_message
                 )
-                bot_messages.append(bot_message)
+                pending_receipt = state.tasks.active.slots.pop("_pending_receipt", None)
+                if bot_message:
+                    if pending_receipt is not None and bot_message.receipt is None:
+                        bot_message.receipt = pending_receipt
+                    bot_messages.append(bot_message)
                 # 推进到下一步
                 self._run_next_step(step, state)
                 continue
@@ -72,17 +82,35 @@ class FlowExecutor:
                     return bot_messages
 
             """
+            confirm 步骤: 高危写操作二次确认门禁
+            """
+            if isinstance(step, ConfirmFlowStep):
+                if state.tasks.active.slots.get(step.confirm_slot) is True:
+                    self._run_next_step(step, state)
+                    continue
+                confirm_text = Template(step.template.text).render(
+                    slots=state.tasks.active.slots,
+                    mask_id=mask_identifier,
+                )
+                bot_messages.append(BotMessage(text=confirm_text))
+                return bot_messages
+
+            """
             action 步骤: 执行具体业务方法, 调用中台接口方法得到结果
             使用技术 httpx
             """
             if isinstance(step, ActionFlowStep):
+                if on_stage is not None:
+                    await on_stage("action", "正在连接金融中台办理...")
                 action_result = await self.action_runner.run(
                     action_name=step.action,
                     state=state,
                 )
 
-                # 更新状态
+                # 更新状态并暂存结构化回执供紧随的 ResponseFlowStep 挂载
                 state.tasks.active.slots.update(action_result.result)
+                if action_result.receipt is not None:
+                    state.tasks.active.slots["_pending_receipt"] = action_result.receipt
 
                 # 数据渲染
                 self._run_next_step(step, state)

@@ -236,6 +236,94 @@ export const ReceiptCard: React.FC<ReceiptCardProps> = ({
           </div>
         ) : null}
 
+        {receipt.kind === 'credit_limit' ? (
+          <div className="space-y-2.5">
+            <div className="text-[11px] text-ink-2">客户可用授信额度</div>
+            {receipt.items.map((item) => (
+              <div
+                key={item.limitNo}
+                className="flex items-center justify-between gap-2 border border-hairline rounded px-2.5 py-2 bg-paper text-[12px]"
+              >
+                <div className="min-w-0">
+                  <div className="tabular-mono font-medium text-ink truncate">
+                    {item.productCode}
+                  </div>
+                  <div className="text-[11px] text-ink-2 tabular-mono">
+                    {item.limitNo} · 至 {item.validTo}
+                  </div>
+                </div>
+                <div className="text-right shrink-0 tabular-mono">
+                  <div className="font-semibold text-ink">
+                    可用 {item.availableAmount} 元
+                  </div>
+                  <div className="text-[11px] text-ink-2">
+                    总额 {item.totalAmount} 元
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {receipt.kind === 'repayment_plan' ? (
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between text-[12px]">
+              <span className="text-ink font-medium">{receipt.scopeLabel}</span>
+              <span
+                className={`text-[11px] tabular-mono ${
+                  receipt.overdueCount > 0 ? 'text-seal font-medium' : 'text-celadon'
+                }`}
+              >
+                {receipt.overdueCount > 0
+                  ? `存在 ${receipt.overdueCount} 笔逾期`
+                  : '无逾期记录'}
+              </span>
+            </div>
+            {receipt.bills.length > 0 ? (
+              <div className="space-y-1.5">
+                {receipt.bills.slice(0, 4).map((bill) => (
+                  <div
+                    key={bill.billNo}
+                    className="flex items-center justify-between gap-2 bg-paper border border-hairline rounded px-2.5 py-1.5 text-[12px]"
+                  >
+                    <CopyCodeButton value={bill.billNo} />
+                    <span className="tabular-mono text-ink">
+                      待还 {bill.outstandingAmount} 元 · {bill.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-[12px] text-ink-2">当前暂无待还账单</div>
+            )}
+          </div>
+        ) : null}
+
+        {receipt.kind === 'loan_repayment' ? (
+          <div className="space-y-3">
+            <div>
+              <div className="text-[11px] text-ink-2">本次还款金额</div>
+              <div className="tabular-mono text-[24px] leading-tight font-semibold text-ink mt-0.5">
+                {receipt.amount}{' '}
+                <span className="text-[14px] font-normal text-ink-2">元</span>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-[12px]">
+              <div>
+                <span className="text-ink-2 mr-1.5">还款流水</span>
+                <CopyCodeButton value={receipt.repaymentNo} />
+              </div>
+              <div>
+                <span className="text-ink-2 mr-1.5">账单号</span>
+                <CopyCodeButton value={receipt.billNo} />
+              </div>
+              <span className="tabular-mono text-ink-2">
+                扣款：{receipt.accountNo}
+              </span>
+            </div>
+          </div>
+        ) : null}
+
         {/* 右上角电子印章 */}
         <Seal
           text={receipt.sealText}

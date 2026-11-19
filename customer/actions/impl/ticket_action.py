@@ -61,7 +61,14 @@ class ComplaintTicketAction(Action):
                         f"您的投诉工单已创建成功！工单编号为【{ticket_no}】（问题类型：{category}），"
                         "我们已安排专席客服进行跟进核实，将在 24 小时内向您反馈处理进展。"
                     ),
-                }
+                },
+                receipt={
+                    "kind": "ticket",
+                    "title": "工单回执",
+                    "sealText": "已登记",
+                    "ticketNo": str(ticket_no),
+                    "category": str(category),
+                },
             )
         except Exception as e:
             logger.error("创建投诉工单失败: %s", e)

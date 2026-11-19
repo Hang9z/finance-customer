@@ -10,6 +10,7 @@ from customer.handlers.knowledge.provider import KnowledgeChunk
 from customer.prompts.history_builder import HistoryBuilder
 from customer.prompts.loader import load_prompt
 from customer.utils.llm_client import llm
+from customer.utils.observability import get_langchain_config
 
 
 class KnowledgeResponder:
@@ -36,6 +37,7 @@ class KnowledgeResponder:
                         for chunk in chunks
                     ]
                 )
-            }
+            },
+            config=get_langchain_config("knowledge_respond", ["knowledge"]),
         )
         return BotMessage(text=result)
