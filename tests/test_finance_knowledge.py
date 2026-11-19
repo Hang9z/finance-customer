@@ -210,6 +210,60 @@ class TestFinanceKnowledgeProviders(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(chunks[0].source_type, "local")
         self.assertEqual(chunks[0].source, "中州银行金融合规知识库")
 
+    def test_all_knowledge_intents_include_rag_provider(self):
+        for intent_id, intent_meta in KNOWLEDGE_INTENTS.items():
+            self.assertIn(
+                "rag.default",
+                intent_meta.provider_ids,
+                f"KnowledgeIntent {intent_id} 必须包含 rag.default",
+            )
+
+    async def test_chitchat_turn_with_high_score_rag_hit_promotes_to_knowledge(self):
+        from customer.plan.turn_plan import TurnPlan
+
+        engine = build_engine()
+        engine.turn_planner.plan = AsyncMock(return_value=TurnPlan(chitchat={}))
+        engine.chitchat_handler.chitchat = AsyncMock(
+            return_value=[BotMessage(text="should not reach chitchat")]
+        )
+        engine.knowledge_handler.knowledge_responder.respond = AsyncMock(
+            return_value=BotMessage(text="2026年第一季度营业收入53,909,252,220.51元。")
+        )
+        state = DialogueState(sender_id="CUS00000001")
+        msg = UserMessage(
+            sender_id="CUS00000001",
+            message_id="m8",
+            type=MessageType.TEXT,
+            text="贵州茅台酒股份有限公司2026年第一季度营业收入和净利润分别是多少？",
+        )
+
+        with patch(
+            "customer.handlers.knowledge.provider.rag_client.retrieve",
+            new=AsyncMock(
+                return_value=[
+                    {
+                        "chunk_id": "mt_1",
+                        "content": "2026年第一季度实现营业收入53,909,252,220.51元。",
+                        "file_title": "贵州茅台酒股份有限公司2026 年第一季度报告",
+                        "parent_title": "合并利润表",
+                        "source_type": "milvus",
+                        "score": 0.9999,
+                    }
+                ]
+            ),
+        ) as mock_retrieve:
+            result = await engine.process_message(state, msg)
+
+        self.assertEqual(mock_retrieve.await_count, 1)
+        engine.chitchat_handler.chitchat.assert_not_awaited()
+        self.assertEqual(len(result.messages), 1)
+        self.assertIn("53,909,252,220.51", result.messages[0].text)
+        self.assertTrue(result.messages[0].citations)
+        self.assertEqual(
+            result.messages[0].citations[0]["source"],
+            "贵州茅台酒股份有限公司2026 年第一季度报告",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

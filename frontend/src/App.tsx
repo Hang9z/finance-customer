@@ -145,9 +145,7 @@ export const App: React.FC = () => {
       <KnowledgeAdminModal
         isOpen={kbAdminOpen}
         onClose={() => setKbAdminOpen(false)}
-        queryStatus={ragStatus}
         importOnline={ragEndpoints.importOnline}
-        chatUrl={ragEndpoints.chatUrl}
         importUrl={ragEndpoints.importUrl}
       />
     </div>

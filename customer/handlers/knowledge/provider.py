@@ -209,9 +209,24 @@ class RAGProvider(KnowledgeProvider):
         query = (user_message.text or "").strip()
         if settings.rag_enabled and query:
             focused = state.shared.focused_object
-            item_names = [focused.title or focused.id] if focused and (focused.title or focused.id) else []
+            item_names = (
+                [focused.title or focused.id]
+                if focused
+                and focused.type in {"finance_product", "knowledge_doc", "product"}
+                and (focused.title or focused.id)
+                else []
+            )
+            session_id = (
+                state.shared.sessions[-1].session_id
+                if state.shared.sessions
+                else state.sender_id
+            )
             try:
-                remote_items = await rag_client.retrieve(query=query, item_names=item_names)
+                remote_items = await rag_client.retrieve(
+                    query=query,
+                    item_names=item_names,
+                    session_id=session_id,
+                )
                 chunks: list[KnowledgeChunk] = []
                 for item in remote_items:
                     content = str(item.get("content") or "").strip()

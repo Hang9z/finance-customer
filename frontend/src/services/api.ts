@@ -7,7 +7,7 @@ import {
   RagStatusResponse,
 } from '../types/chat';
 
-const CHAT_TIMEOUT_MS = 90_000;
+const CHAT_TIMEOUT_MS = 180_000;
 
 interface CachedSessionToken {
   token: string;

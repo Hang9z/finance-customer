@@ -67,11 +67,13 @@ class KnowledgeHandler:
         knowledge_intents: list[str],
         state: DialogueState,
         user_message: UserMessage,
+        prefetched_chunks: list[KnowledgeChunk] | None = None,
     ) -> list[BotMessage]:
         provider_ids: list[str] = self.get_provider_ids(knowledge_intents)
         providers: list[KnowledgeProvider] = [
             p
             for pid in provider_ids
+            if not (prefetched_chunks and pid == "rag.default")
             if (p := self.knowledge_registry.get_provider(pid)) is not None
         ]
 
@@ -79,7 +81,7 @@ class KnowledgeHandler:
             *(p.execute(state=state, user_message=user_message) for p in providers),
             return_exceptions=True,
         )
-        final_result: list[KnowledgeChunk] = []
+        final_result: list[KnowledgeChunk] = list(prefetched_chunks or [])
         for provider_obj, res in zip(providers, results):
             if isinstance(res, Exception):
                 logger.warning("知识 Provider (%s) 执行异常: %s", provider_obj.provider_id, res)

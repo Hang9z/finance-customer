@@ -14,17 +14,17 @@ KNOWLEDGE_INTENTS: dict[str, KnowledgeIntent] = {
     "finance_product_consult": KnowledgeIntent(
         id="finance_product_consult",
         description="金融产品综合咨询（贷款、理财、基金、存款产品介绍与利率收益对比）",
-        provider_ids=["api.finance_product", "faq.default"],
+        provider_ids=["api.finance_product", "faq.default", "rag.default"],
     ),
     "loan_product_info": KnowledgeIntent(
         id="loan_product_info",
         description="贷款产品咨询（贷款额度、利率区间、期限、还款方式及申请条件）",
-        provider_ids=["api.finance_product", "faq.default"],
+        provider_ids=["api.finance_product", "faq.default", "rag.default"],
     ),
     "wealth_product_info": KnowledgeIntent(
         id="wealth_product_info",
         description="理财与基金产品咨询（预期收益率、风险等级、净值、起购及赎回规则）",
-        provider_ids=["api.finance_product", "faq.default"],
+        provider_ids=["api.finance_product", "faq.default", "rag.default"],
     ),
     "interest_and_fee_policy": KnowledgeIntent(
         id="interest_and_fee_policy",
@@ -43,7 +43,7 @@ KNOWLEDGE_INTENTS: dict[str, KnowledgeIntent] = {
     ),
     "general_finance_info": KnowledgeIntent(
         id="general_finance_info",
-        description="银行综合常见问题及通用金融服务咨询",
+        description="银行综合常见问题、公司财报、行业研报及知识库已上传文档问答",
         provider_ids=["faq.default", "rag.default"],
     ),
 }

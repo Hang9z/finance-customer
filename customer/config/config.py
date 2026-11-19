@@ -47,10 +47,10 @@ class Settings(BaseSettings):
     rag_api_base_url: str = "http://127.0.0.1:8001"
     rag_import_base_url: str = "http://127.0.0.1:8002"
     rag_enabled: bool = True
-    rag_top_k: int = 4
-    rag_enable_hyde: bool = False
-    rag_enable_web: bool = False
-    rag_timeout_seconds: float = 15.0
+    rag_top_k: int = 10
+    rag_enable_hyde: bool = True
+    rag_enable_web: bool = True
+    rag_timeout_seconds: float = 0.0
 
 settings = Settings()
 

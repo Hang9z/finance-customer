@@ -4,12 +4,14 @@ import time
 import uuid
 from pathlib import Path
 
+from customer.config.config import settings
 from customer.handlers.chitchat.chitchat_handler import ChitChatHandler
 from customer.handlers.clarify.clarify_response import ClarifyResponse
 from customer.domain.messages import UserMessage, ProcessResult, BotMessage, MessageType
 from customer.domain.state import DialogueState, Session, Turn, TaskInstance, FocusedObject
 from customer.engine.protocol import build_workflow_snapshot
 from customer.handlers.knowledge.handler import KnowledgeHandler
+from customer.handlers.knowledge.provider import KnowledgeChunk
 from customer.handlers.task.command.command_executor import CommandExecutor
 from customer.handlers.task.response.task_event_type import TaskEvent
 from customer.plan.command import Command, StartFlowCommand, SetSlotsCommand, ResumeTaskCommand, CancelTaskCommand
@@ -56,6 +58,38 @@ _CANCEL_TOKENS = {
     "no",
     "cancel",
 }
+_TRIVIAL_CHITCHAT_TOKENS = {
+    "你好",
+    "您好",
+    "你好呀",
+    "您好呀",
+    "早上好",
+    "下午好",
+    "晚上好",
+    "嗨",
+    "hello",
+    "hi",
+    "谢谢",
+    "非常感谢",
+    "多谢",
+    "感谢",
+    "再见",
+    "拜拜",
+    "在吗",
+    "你是谁",
+    "你叫什么",
+    "你叫什么名字",
+}
+_RAG_FALLBACK_MIN_SCORE = 0.35
+
+
+def _should_probe_rag_before_chitchat(text: str | None) -> bool:
+    """过滤纯寒暄和过短消息，避免无意义的远程向量检索."""
+    raw = (text or "").strip()
+    if len(raw) < 4:
+        return False
+    normalized = _CONFIRM_PUNCT_RE.sub("", raw).lower()
+    return normalized not in _TRIVIAL_CHITCHAT_TOKENS
 
 """
 用于处理消息
@@ -311,10 +345,43 @@ class DialogueEngine:
             )
             return messages
 
+        # 闲聊前先对非寒暄文本做一次高置信度 RAG 兜底，避免知识库已入库文档被误判为闲聊
+        if settings.rag_enabled and _should_probe_rag_before_chitchat(user_message.text):
+            remote_hits = await self._probe_remote_rag_chunks(state, user_message)
+            if remote_hits:
+                if on_stage is not None:
+                    await on_stage("knowledge", "正在检索金融知识与产品...")
+                return await self.knowledge_handler.handle(
+                    knowledge_intents=["general_finance_info"],
+                    state=state,
+                    user_message=user_message,
+                    prefetched_chunks=remote_hits,
+                )
+
         # 闲聊
         if on_stage is not None:
             await on_stage("responding", "正在整理回复...")
         return await self.chitchat_handler.chitchat(state, user_message)
+
+    async def _probe_remote_rag_chunks(
+        self,
+        state: DialogueState,
+        user_message: UserMessage,
+    ) -> list[KnowledgeChunk]:
+        """当意图规划未命中知识分支时，探测远端 RAG 是否存在高相关切片."""
+        rag_provider = self.knowledge_handler.knowledge_registry.get_provider("rag.default")
+        if rag_provider is None:
+            return []
+        try:
+            chunks = await rag_provider.execute(state=state, user_message=user_message)
+        except Exception:
+            return []
+        return [
+            chunk
+            for chunk in chunks
+            if chunk.source_type != "local"
+            and (chunk.score is None or chunk.score >= _RAG_FALLBACK_MIN_SCORE)
+        ]
 
     async def _execute_object_message(
         self,
