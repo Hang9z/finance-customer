@@ -4,6 +4,7 @@ import {
   ChatResponse,
   CustomerAssetsResponse,
   HistoryResponse,
+  RagStatusResponse,
 } from '../types/chat';
 
 const CHAT_TIMEOUT_MS = 90_000;
@@ -407,6 +408,23 @@ export async function checkFinanceApiHealth(externalSignal?: AbortSignal): Promi
     return response.ok;
   } catch {
     return false;
+  } finally {
+    cleanup();
+  }
+}
+
+export async function fetchRagStatus(
+  externalSignal?: AbortSignal,
+): Promise<RagStatusResponse | null> {
+  const { signal, cleanup } = linkAbortSignals(externalSignal, 5_000);
+  try {
+    const response = await fetch('/api/rag/status', { signal });
+    if (!response.ok) {
+      return null;
+    }
+    return (await response.json()) as RagStatusResponse;
+  } catch {
+    return null;
   } finally {
     cleanup();
   }

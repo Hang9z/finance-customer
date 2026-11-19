@@ -19,10 +19,13 @@ from customer.api.schemas import (
     CustomerAssetsResponse,
     HistoryMessage,
     HistoryResponse,
+    RagStatusResponse,
     SessionTokenRequest,
     SessionTokenResponse,
 )
 from customer.clients.finance_client import finance_client
+from customer.clients.rag_client import rag_client
+from customer.config.config import settings
 from customer.domain.messages import MessageObject, MessageType, ProcessResult, UserMessage
 from customer.domain.state import DialogueState, Session, Turn
 from customer.engine.protocol import build_workflow_snapshot
@@ -157,6 +160,7 @@ def _build_response_message(process_result:ProcessResult)->ChatResponse:
                 ) if bot_message.object else None,
                 receipt=bot_message.receipt,
                 event=bot_message.event,
+                citations=bot_message.citations,
             )
             for bot_message in process_result.messages
         ],
@@ -196,6 +200,7 @@ async def chat_history(
                         object=None,
                         receipt=bot_message.receipt,
                         event=bot_message.event,
+                        citations=bot_message.citations,
                     )
                     for bot_message in turn.bot_message
                 ]
@@ -264,4 +269,24 @@ async def customer_assets(
         credit_limits=credit_limits,
         wealth_positions=wealth_positions,
         synced=synced,
+    )
+
+
+@chat_router.get("/api/rag/status", response_model=RagStatusResponse)
+async def rag_status() -> RagStatusResponse:
+    """探测金融智脑 (finance_brain) 问答服务与文档导入服务状态及工作台地址."""
+    health = (
+        await rag_client.check_health()
+        if settings.rag_enabled
+        else {"query_online": False, "import_online": False}
+    )
+    query_base = rag_client.base_url
+    import_base = rag_client.import_base_url
+    return RagStatusResponse(
+        enabled=settings.rag_enabled,
+        query_online=health["query_online"],
+        import_online=health["import_online"],
+        query_url=query_base,
+        chat_url=f"{query_base}/chat.html",
+        import_url=f"{import_base}/import.html",
     )

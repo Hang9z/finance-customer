@@ -22,6 +22,7 @@ class ChatMessage(BaseModel):
     object: ChatObject | None = None
     receipt: dict[str, Any] | None = None
     event: dict[str, Any] | None = None
+    citations: list[dict[str, Any]] | None = None
 
 
 class ChatResponse(BaseModel):
@@ -38,6 +39,7 @@ class HistoryMessage(BaseModel):
     object: ChatObject | None = None
     receipt: dict[str, Any] | None = None
     event: dict[str, Any] | None = None
+    citations: list[dict[str, Any]] | None = None
 
 
 class HistoryResponse(BaseModel):
@@ -66,3 +68,12 @@ class CustomerAssetsResponse(BaseModel):
     credit_limits: list[dict[str, Any]] = []
     wealth_positions: list[dict[str, Any]] = []
     synced: bool = True
+
+
+class RagStatusResponse(BaseModel):
+    enabled: bool
+    query_online: bool
+    import_online: bool
+    query_url: str
+    chat_url: str
+    import_url: str

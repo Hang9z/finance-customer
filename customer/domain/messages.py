@@ -35,6 +35,7 @@ class BotMessage:
     object: MessageObject | None = None
     receipt: dict[str, Any] | None = None
     event: dict[str, Any] | None = None
+    citations: list[dict[str, Any]] | None = None
 
 
 # 5. ProcessResult 依赖 BotMessage，必须最后

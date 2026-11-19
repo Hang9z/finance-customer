@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  BookOpen,
   Eraser,
   PanelRightClose,
   PanelRightOpen,
@@ -12,11 +13,13 @@ interface HeaderProps {
   customerId: string;
   engineStatus: ServiceHealthStatus;
   financeStatus: ServiceHealthStatus;
+  ragStatus: ServiceHealthStatus;
   isLedgerOpen: boolean;
   isRefreshing: boolean;
   onRefreshHistory: () => void;
   onClearLocalView: () => void;
   onToggleLedger: () => void;
+  onOpenKnowledgeAdmin: () => void;
 }
 
 const HealthIndicator: React.FC<{
@@ -45,11 +48,13 @@ export const Header: React.FC<HeaderProps> = ({
   customerId,
   engineStatus,
   financeStatus,
+  ragStatus,
   isLedgerOpen,
   isRefreshing,
   onRefreshHistory,
   onClearLocalView,
   onToggleLedger,
+  onOpenKnowledgeAdmin,
 }) => {
   const preset = CUSTOMER_PRESETS.find((c) => c.id === customerId);
   const displayName = preset?.name ?? '自定义客户';
@@ -77,9 +82,20 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="hidden md:flex items-center gap-4">
           <HealthIndicator label="客服引擎 :18082" status={engineStatus} />
           <HealthIndicator label="金融中台 :8000" status={financeStatus} />
+          <HealthIndicator label="金融智脑 :8001" status={ragStatus} />
         </div>
 
         <div className="flex items-center gap-1 border-l border-hairline pl-2 md:pl-3">
+          <button
+            type="button"
+            onClick={onOpenKnowledgeAdmin}
+            aria-label="打开金融智脑知识库"
+            title="知识库管理 (:8002 / :8001)"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[12px] text-ink-2 hover:text-ink hover:bg-paper transition-colors"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">知识库</span>
+          </button>
           <button
             type="button"
             onClick={onRefreshHistory}

@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Composer } from './components/Composer/Composer';
 import { Conversation } from './components/Conversation/Conversation';
 import { Header } from './components/Header/Header';
+import { KnowledgeAdminModal } from './components/KnowledgeAdminModal';
 import { Ledger, LedgerTab } from './components/Ledger/Ledger';
 import { Rail } from './components/Rail/Rail';
 import { WorkflowStrip } from './components/WorkflowStrip/WorkflowStrip';
@@ -24,6 +25,8 @@ export const App: React.FC = () => {
     isSending,
     engineStatus,
     financeStatus,
+    ragStatus,
+    ragEndpoints,
     engineOfflineBanner,
     switchCustomer,
     refreshHistory,
@@ -41,6 +44,7 @@ export const App: React.FC = () => {
   );
   const [ledgerTab, setLedgerTab] = useState<LedgerTab>('wallet');
   const [flashLedgerBorder, setFlashLedgerBorder] = useState(false);
+  const [kbAdminOpen, setKbAdminOpen] = useState(false);
 
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -80,11 +84,13 @@ export const App: React.FC = () => {
             customerId={customerId}
             engineStatus={engineStatus}
             financeStatus={financeStatus}
+            ragStatus={ragStatus}
             isLedgerOpen={ledgerOpen}
             isRefreshing={isLoadingHistory}
             onRefreshHistory={() => void refreshHistory()}
             onClearLocalView={clearLocalView}
             onToggleLedger={() => setLedgerOpen((prev) => !prev)}
+            onOpenKnowledgeAdmin={() => setKbAdminOpen(true)}
           />
 
           <WorkflowStrip
@@ -135,6 +141,15 @@ export const App: React.FC = () => {
           onAddCustomCard={addCustomCard}
         />
       </div>
+
+      <KnowledgeAdminModal
+        isOpen={kbAdminOpen}
+        onClose={() => setKbAdminOpen(false)}
+        queryStatus={ragStatus}
+        importOnline={ragEndpoints.importOnline}
+        chatUrl={ragEndpoints.chatUrl}
+        importUrl={ragEndpoints.importUrl}
+      />
     </div>
   );
 };

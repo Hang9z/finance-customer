@@ -29,11 +29,30 @@ export interface QuickReplyOption {
   variant?: 'primary' | 'danger' | 'secondary';
 }
 
+export interface KnowledgeCitation {
+  source: string;
+  section?: string;
+  score?: number | null;
+  sourceType?: string;
+  url?: string;
+  snippet?: string;
+}
+
+export interface RagStatusResponse {
+  enabled: boolean;
+  query_online: boolean;
+  import_online: boolean;
+  query_url: string;
+  chat_url: string;
+  import_url: string;
+}
+
 export interface ChatMessage {
   text?: string | null;
   object?: ChatObject | null;
   receipt?: Record<string, unknown> | null;
   event?: TaskEventInfo | null;
+  citations?: KnowledgeCitation[] | null;
 }
 
 export interface ServerWorkflowActive {
@@ -73,6 +92,7 @@ export interface HistoryMessageItem {
   object?: ChatObject | null;
   receipt?: Record<string, unknown> | null;
   event?: TaskEventInfo | null;
+  citations?: KnowledgeCitation[] | null;
 }
 
 export interface HistoryResponse {
@@ -291,6 +311,7 @@ export type TimelineItem =
       kind: 'bot';
       text: string;
       receipts: ReceiptData[];
+      citations?: KnowledgeCitation[];
       streaming?: boolean;
     };
 

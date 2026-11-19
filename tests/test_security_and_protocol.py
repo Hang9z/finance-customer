@@ -16,7 +16,7 @@ from customer.config.config import settings
 from customer.domain.state import DialogueState
 from customer.engine.builder import build_engine
 from customer.plan.command import SetSlotsCommand, StartFlowCommand
-from customer.plan.turn_plan import TaskTurnPlan, TurnPlan
+from customer.plan.turn_plan import KnowledgeTurnPlan, TaskTurnPlan, TurnPlan
 from customer.security.auth import AuthError, issue_session_token, validate_sender_authorization, verify_session_token
 from customer.security.guardrails import check_user_input_safety
 from customer.security.masking import mask_identifier, mask_sensitive_text
@@ -250,6 +250,54 @@ class TestApiSecurityAndProtocolEndpoints(unittest.TestCase):
         self.assertEqual(body["customer_name"], "测试商户")
         self.assertEqual(body["accounts"][0]["masked_account_no"], "ACC****0031")
         self.assertEqual(body["credit_limits"][0]["available_limit_amount"], "105000.00")
+
+    def test_rag_status_endpoint_and_citations_in_chat_response(self):
+        with patch(
+            "customer.api.chat_router.rag_client.check_health",
+            new=AsyncMock(return_value={"query_online": True, "import_online": True}),
+        ):
+            status_resp = self.client.get("/api/rag/status")
+        self.assertEqual(status_resp.status_code, 200)
+        status_body = status_resp.json()
+        self.assertTrue(status_body["query_online"])
+        self.assertTrue(status_body["import_online"])
+        self.assertTrue(status_body["chat_url"].endswith("/chat.html"))
+        self.assertTrue(status_body["import_url"].endswith("/import.html"))
+
+        token = self.client.post("/api/auth/session", json={"customer_no": "CUS00000001"}).json()["access_token"]
+        self.engine.turn_planner.plan.return_value = TurnPlan(
+            knowledge=KnowledgeTurnPlan(intents=["interest_and_fee_policy"])
+        )
+        from customer.domain.messages import BotMessage
+
+        self.engine.knowledge_handler.knowledge_responder.respond = AsyncMock(
+            return_value=BotMessage(text="放款 6 个月内提前结清可能收取 1% 手续费。")
+        )
+        with patch(
+            "customer.handlers.knowledge.provider.rag_client.retrieve",
+            new=AsyncMock(
+                return_value=[
+                    {
+                        "chunk_id": "fb_99",
+                        "content": "个人消费贷款提前结清费用以借款合同约定为准。",
+                        "file_title": "中州消费贷条款.pdf",
+                        "parent_title": "提前还款条款",
+                        "source_type": "milvus",
+                        "score": 0.88,
+                    }
+                ]
+            ),
+        ):
+            chat_resp = self.client.post(
+                "/api/chat",
+                json={"sender_id": "CUS00000001", "text": "提前还贷违约金怎么收？"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        self.assertEqual(chat_resp.status_code, 200)
+        citations = chat_resp.json()["messages"][0]["citations"]
+        self.assertTrue(citations)
+        self.assertEqual(citations[0]["source"], "中州消费贷条款.pdf")
+        self.assertEqual(citations[0]["section"], "提前还款条款")
 
 
 if __name__ == "__main__":

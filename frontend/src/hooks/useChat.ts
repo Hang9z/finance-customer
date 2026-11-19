@@ -21,6 +21,7 @@ import {
   EngineOfflineError,
   fetchCustomerAssets,
   fetchHistory,
+  fetchRagStatus,
   sendChatStream,
 } from '../services/api';
 import {
@@ -28,6 +29,7 @@ import {
   ChatObject,
   CustomerAssetAccount,
   CustomerCreditLimit,
+  KnowledgeCitation,
   QuickReplyOption,
   ReceiptData,
   ServiceHealthStatus,
@@ -128,8 +130,23 @@ interface ProcessedBotMessage {
   rawText: string;
 }
 
+function normalizeCitations(raw: ChatMessage['citations']): KnowledgeCitation[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.filter(
+    (c): c is KnowledgeCitation =>
+      Boolean(c && typeof c === 'object' && typeof c.source === 'string' && c.source.trim()),
+  );
+}
+
 function processServerBotMessage(
-  msg: { text?: string | null; receipt?: Record<string, unknown> | null; event?: ChatMessage['event'] },
+  msg: {
+    text?: string | null;
+    receipt?: Record<string, unknown> | null;
+    event?: ChatMessage['event'];
+    citations?: ChatMessage['citations'];
+  },
   itemId: string,
 ): ProcessedBotMessage | null {
   const rawText = msg.text ?? '';
@@ -147,6 +164,7 @@ function processServerBotMessage(
     return null;
   }
 
+  const citations = normalizeCitations(msg.citations);
   const discoveredTickets: Array<{ ticketNo: string; category: string }> = [];
   const discoveredLoans: Array<{ applicationNo: string; amount: string; status: string }> = [];
 
@@ -170,7 +188,13 @@ function processServerBotMessage(
         });
       }
       return {
-        item: { id: itemId, kind: 'bot', text: cleanMarkdown, receipts: [receipt] },
+        item: {
+          id: itemId,
+          kind: 'bot',
+          text: cleanMarkdown,
+          receipts: [receipt],
+          ...(citations.length > 0 ? { citations } : {}),
+        },
         receipts: [receipt],
         discoveredTickets,
         discoveredLoans,
@@ -195,6 +219,7 @@ function processServerBotMessage(
       kind: 'bot',
       text: parsed.cleanMarkdown,
       receipts: parsed.receipts,
+      ...(citations.length > 0 ? { citations } : {}),
     },
     receipts: parsed.receipts,
     discoveredTickets: parsed.discoveredTickets,
@@ -214,6 +239,16 @@ export function useChat() {
   const [isSending, setIsSending] = useState<boolean>(false);
   const [engineStatus, setEngineStatus] = useState<ServiceHealthStatus>('checking');
   const [financeStatus, setFinanceStatus] = useState<ServiceHealthStatus>('checking');
+  const [ragStatus, setRagStatus] = useState<ServiceHealthStatus>('checking');
+  const [ragEndpoints, setRagEndpoints] = useState<{
+    chatUrl: string;
+    importUrl: string;
+    importOnline: boolean;
+  }>({
+    chatUrl: 'http://127.0.0.1:8001/chat.html',
+    importUrl: 'http://127.0.0.1:8002/import.html',
+    importOnline: false,
+  });
   const [engineOfflineBanner, setEngineOfflineBanner] = useState<boolean>(false);
   const [customCards, setCustomCards] = useState<WalletCard[]>([]);
   const [sessionTickets, setSessionTickets] = useState<WalletCard[]>([]);
@@ -378,12 +413,23 @@ export function useChat() {
   );
 
   const runHealthChecks = useCallback(async () => {
-    const [engOk, finOk] = await Promise.all([
+    const [engOk, finOk, ragInfo] = await Promise.all([
       checkEngineHealth(),
       checkFinanceApiHealth(),
+      fetchRagStatus(),
     ]);
     setEngineStatus(engOk ? 'online' : 'offline');
     setFinanceStatus(finOk ? 'online' : 'offline');
+    if (ragInfo) {
+      setRagStatus(ragInfo.query_online ? 'online' : 'offline');
+      setRagEndpoints({
+        chatUrl: ragInfo.chat_url,
+        importUrl: ragInfo.import_url,
+        importOnline: ragInfo.import_online,
+      });
+    } else {
+      setRagStatus('offline');
+    }
     if (engOk) {
       setEngineOfflineBanner(false);
     } else {
@@ -741,6 +787,8 @@ export function useChat() {
     isSending,
     engineStatus,
     financeStatus,
+    ragStatus,
+    ragEndpoints,
     engineOfflineBanner,
     switchCustomer,
     refreshHistory: () => {

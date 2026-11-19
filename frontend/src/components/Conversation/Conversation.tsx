@@ -3,7 +3,11 @@ import {
   AlertCircle,
   ArrowDown,
   ArrowRightLeft,
+  BookOpen,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
   Play,
   RotateCcw,
   ShieldAlert,
@@ -11,6 +15,7 @@ import {
 } from 'lucide-react';
 import { OBJECT_SLOT_MAP } from '../../constants/presets';
 import {
+  KnowledgeCitation,
   QuickReplyOption,
   TaskEventInfo,
   TimelineItem,
@@ -64,6 +69,87 @@ const TaskEventDivider: React.FC<{ event: TaskEventInfo }> = ({ event }) => {
         <span>{label}</span>
       </div>
       <div className="flex-1 h-px bg-hairline" />
+    </div>
+  );
+};
+
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  milvus: '金融智脑 Milvus',
+  web: '实时联网',
+  finance_api: '中台实时产品',
+  local: '内置合规知识',
+};
+
+const CitationPanel: React.FC<{ citations: KnowledgeCitation[] }> = ({ citations }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="max-w-[88%] rounded-[10px] border border-hairline bg-paper px-3 py-2 text-[12px]">
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        className="w-full flex items-center justify-between gap-3 text-ink-2 hover:text-ink transition-colors"
+        aria-expanded={expanded}
+      >
+        <span className="inline-flex items-center gap-1.5 font-medium">
+          <BookOpen className="w-3.5 h-3.5 text-celadon shrink-0" />
+          <span>参考溯源 · {citations.length} 条知识切片</span>
+        </span>
+        {expanded ? (
+          <ChevronUp className="w-3.5 h-3.5 shrink-0" />
+        ) : (
+          <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+        )}
+      </button>
+
+      {expanded ? (
+        <div className="mt-2 pt-2 border-t border-hairline space-y-2">
+          {citations.map((cit, idx) => {
+            const typeLabel = SOURCE_TYPE_LABELS[cit.sourceType ?? 'local'] ?? cit.sourceType ?? '知识库';
+            return (
+              <div
+                key={`${cit.source}_${idx}`}
+                className="bg-surface border border-hairline rounded-[8px] px-2.5 py-2 space-y-1"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="px-1.5 py-0.5 rounded bg-paper border border-hairline text-[10px] text-ink-2 shrink-0">
+                      {typeLabel}
+                    </span>
+                    <span className="font-medium text-ink truncate">
+                      {cit.source}
+                      {cit.section ? ` · ${cit.section}` : ''}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {typeof cit.score === 'number' ? (
+                      <span className="tabular-mono text-[10px] text-mist">
+                        匹配 {cit.score.toFixed(2)}
+                      </span>
+                    ) : null}
+                    {cit.url ? (
+                      <a
+                        href={cit.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-0.5 text-[11px] text-celadon hover:underline"
+                      >
+                        <span>原文</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
+                {cit.snippet ? (
+                  <p className="text-[11px] text-ink-2 leading-relaxed line-clamp-3">
+                    {cit.snippet}
+                  </p>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -265,6 +351,10 @@ export const Conversation: React.FC<ConversationProps> = ({
                         />
                       ) : null}
                     </div>
+                  ) : null}
+
+                  {item.citations && item.citations.length > 0 ? (
+                    <CitationPanel citations={item.citations} />
                   ) : null}
 
                   {item.receipts.map((receipt) => (

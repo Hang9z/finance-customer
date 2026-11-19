@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     langfuse_public_key: str = ""
     langfuse_base_url: str = "https://jp.cloud.langfuse.com"
     langfuse_enabled: bool = True
+    # 金融智脑 RAG 知识库服务配置
+    rag_api_base_url: str = "http://127.0.0.1:8001"
+    rag_import_base_url: str = "http://127.0.0.1:8002"
+    rag_enabled: bool = True
+    rag_top_k: int = 4
+    rag_enable_hyde: bool = False
+    rag_enable_web: bool = False
+    rag_timeout_seconds: float = 15.0
 
 settings = Settings()
 

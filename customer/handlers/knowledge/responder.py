@@ -13,6 +13,13 @@ from customer.utils.llm_client import llm
 from customer.utils.observability import get_langchain_config
 
 
+def _format_chunk_for_prompt(chunk: KnowledgeChunk) -> str:
+    if chunk.source:
+        section_part = f" / {chunk.section}" if chunk.section else ""
+        return f"【来源：{chunk.source}{section_part}】\n{chunk.content}"
+    return chunk.content
+
+
 class KnowledgeResponder:
     async def respond(self,
                       chunks: list[KnowledgeChunk],
@@ -25,17 +32,14 @@ class KnowledgeResponder:
         )
 
         chain = prompt | llm | StrOutputParser()
+        turns = state.shared.sessions[-1].turns if state.shared.sessions else []
 
         result = await chain.ainvoke(
             input={
                 "user_message":HistoryBuilder.render_user_message(user_message),
-                "history":HistoryBuilder.build(
-                    state.shared.sessions[-1].turns
-                ),
+                "history":HistoryBuilder.build(turns),
                 "knowledge_content":'\n'.join(
-                    [  chunk.content
-                        for chunk in chunks
-                    ]
+                    [_format_chunk_for_prompt(chunk) for chunk in chunks]
                 )
             },
             config=get_langchain_config("knowledge_respond", ["knowledge"]),

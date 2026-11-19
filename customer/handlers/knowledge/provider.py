@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from customer.clients.finance_client import finance_client
+from customer.clients.rag_client import rag_client
+from customer.config.config import settings
 from customer.domain.messages import UserMessage
 from customer.domain.state import DialogueState
 
@@ -15,6 +17,11 @@ logger = logging.getLogger(__name__)
 @dataclass
 class KnowledgeChunk:
     content: str = ""
+    source: str = ""
+    section: str = ""
+    score: float | None = None
+    source_type: str = "local"
+    url: str = ""
 
 
 class KnowledgeProvider(ABC):
@@ -86,6 +93,8 @@ def _match_knowledge_entries(
     query: str,
     entries: list[tuple[tuple[str, ...], str]],
     fallback_limit: int = 2,
+    source: str = "中州银行金融知识库",
+    source_type: str = "local",
 ) -> list[KnowledgeChunk]:
     """按关键词命中权重筛选知识条目."""
     text = (query or "").strip()
@@ -96,10 +105,16 @@ def _match_knowledge_entries(
             scored.append((score, content))
 
     if not scored:
-        return [KnowledgeChunk(content=content) for _, content in entries[:fallback_limit]]
+        return [
+            KnowledgeChunk(content=content, source=source, source_type=source_type)
+            for _, content in entries[:fallback_limit]
+        ]
 
     scored.sort(key=lambda item: item[0], reverse=True)
-    return [KnowledgeChunk(content=content) for _, content in scored[:3]]
+    return [
+        KnowledgeChunk(content=content, source=source, score=float(hit_score), source_type=source_type)
+        for hit_score, content in scored[:3]
+    ]
 
 
 class FinanceProductKnowledgeProvider(KnowledgeProvider):
@@ -144,9 +159,22 @@ class FinanceProductKnowledgeProvider(KnowledgeProvider):
                 payload[key] = res
 
         if not payload:
-            return [KnowledgeChunk(content="暂时无法连接金融产品目录接口，请参考行内常规产品规则作答。")]
+            return [
+                KnowledgeChunk(
+                    content="暂时无法连接金融产品目录接口，请参考行内常规产品规则作答。",
+                    source="中州银行产品兜底说明",
+                    source_type="local",
+                )
+            ]
 
-        return [KnowledgeChunk(content=json.dumps(payload, ensure_ascii=False))]
+        return [
+            KnowledgeChunk(
+                content=json.dumps(payload, ensure_ascii=False),
+                source="中州银行实时产品目录",
+                section="中台在售产品与利率接口",
+                source_type="finance_api",
+            )
+        ]
 
 
 class FAQProvider(KnowledgeProvider):
@@ -159,11 +187,17 @@ class FAQProvider(KnowledgeProvider):
         state: DialogueState,
         user_message: UserMessage,
     ) -> list[KnowledgeChunk]:
-        return _match_knowledge_entries(user_message.text, _FAQ_ENTRIES, fallback_limit=2)
+        return _match_knowledge_entries(
+            user_message.text or "",
+            _FAQ_ENTRIES,
+            fallback_limit=2,
+            source="中州银行常见问答知识库",
+            source_type="local",
+        )
 
 
 class RAGProvider(KnowledgeProvider):
-    """金融合规政策与业务指南检索 Provider."""
+    """金融合规政策与业务指南检索 Provider（优先调用金融智脑 RAG，离线时自动降级本地条目）."""
 
     provider_id = "rag.default"
 
@@ -172,4 +206,46 @@ class RAGProvider(KnowledgeProvider):
         state: DialogueState,
         user_message: UserMessage,
     ) -> list[KnowledgeChunk]:
-        return _match_knowledge_entries(user_message.text, _RAG_ENTRIES, fallback_limit=2)
+        query = (user_message.text or "").strip()
+        if settings.rag_enabled and query:
+            focused = state.shared.focused_object
+            item_names = [focused.title or focused.id] if focused and (focused.title or focused.id) else []
+            try:
+                remote_items = await rag_client.retrieve(query=query, item_names=item_names)
+                chunks: list[KnowledgeChunk] = []
+                for item in remote_items:
+                    content = str(item.get("content") or "").strip()
+                    if not content:
+                        continue
+                    source = str(
+                        item.get("file_title")
+                        or item.get("item_name")
+                        or item.get("title")
+                        or "金融智脑知识库"
+                    ).strip()
+                    section = str(item.get("parent_title") or item.get("title") or "").strip()
+                    if section == source:
+                        section = ""
+                    raw_score = item.get("score")
+                    chunks.append(
+                        KnowledgeChunk(
+                            content=content,
+                            source=source,
+                            section=section,
+                            score=float(raw_score) if isinstance(raw_score, (int, float)) else None,
+                            source_type=str(item.get("source_type") or "milvus"),
+                            url=str(item.get("url") or ""),
+                        )
+                    )
+                if chunks:
+                    return chunks
+            except Exception as exc:
+                logger.warning("调用金融智脑 RAG 检索失败，将降级至本地合规知识库: %s", exc)
+
+        return _match_knowledge_entries(
+            query,
+            _RAG_ENTRIES,
+            fallback_limit=2,
+            source="中州银行金融合规知识库",
+            source_type="local",
+        )

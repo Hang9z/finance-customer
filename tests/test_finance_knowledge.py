@@ -118,7 +118,11 @@ class TestFinanceKnowledgeProviders(unittest.IsolatedAsyncioTestCase):
             type=MessageType.TEXT,
             text="购买理财产品需要做风险测评吗？",
         )
-        rag_chunks = await rag.execute(state, msg_risk)
+        with patch(
+            "customer.handlers.knowledge.provider.rag_client.retrieve",
+            new=AsyncMock(return_value=[]),
+        ):
+            rag_chunks = await rag.execute(state, msg_risk)
         self.assertTrue(any("风险承受能力评估" in c.content for c in rag_chunks))
 
     async def test_knowledge_handler_handles_unknown_intent_gracefully(self):
@@ -136,11 +140,75 @@ class TestFinanceKnowledgeProviders(unittest.IsolatedAsyncioTestCase):
             text="有什么理财推荐？",
         )
 
-        result = await handler.handle(["unknown_intent"], state, msg)
+        with patch(
+            "customer.handlers.knowledge.provider.rag_client.retrieve",
+            new=AsyncMock(return_value=[]),
+        ):
+            result = await handler.handle(["unknown_intent"], state, msg)
         self.assertEqual(len(result), 1)
         self.assertIn("R1/R2", result[0].text)
         passed_chunks = handler.knowledge_responder.respond.await_args.kwargs["chunks"]
         self.assertTrue(len(passed_chunks) >= 2)
+
+    async def test_rag_provider_uses_remote_finance_brain_and_returns_citations(self):
+        engine = build_engine()
+        handler = engine.knowledge_handler
+        handler.knowledge_responder.respond = AsyncMock(
+            return_value=BotMessage(text="根据消费贷管理办法，利率范围 3.6%-7.2%。")
+        )
+        state = DialogueState(sender_id="CUS00000001")
+        msg = UserMessage(
+            sender_id="CUS00000001",
+            message_id="m6",
+            type=MessageType.TEXT,
+            text="消费贷提前还款违约金怎么算？",
+        )
+
+        with patch(
+            "customer.handlers.knowledge.provider.rag_client.retrieve",
+            new=AsyncMock(
+                return_value=[
+                    {
+                        "chunk_id": "fb_1",
+                        "content": "放款 6 个月内提前结清收取剩余本金 1% 手续费，关联账户 ACC0000000001。",
+                        "file_title": "个人消费贷款管理办法.pdf",
+                        "parent_title": "第五章 提前还款",
+                        "source_type": "milvus",
+                        "score": 0.92,
+                    }
+                ]
+            ),
+        ):
+            result = await handler.handle(["interest_and_fee_policy"], state, msg)
+
+        self.assertEqual(len(result), 1)
+        self.assertTrue(result[0].citations)
+        cit = result[0].citations[0]
+        self.assertEqual(cit["source"], "个人消费贷款管理办法.pdf")
+        self.assertEqual(cit["section"], "第五章 提前还款")
+        self.assertEqual(cit["sourceType"], "milvus")
+        self.assertEqual(cit["score"], 0.92)
+        self.assertIn("ACC****0001", cit["snippet"])
+
+    async def test_rag_provider_falls_back_when_remote_unavailable(self):
+        rag = RAGProvider()
+        state = DialogueState(sender_id="CUS00000001")
+        msg = UserMessage(
+            sender_id="CUS00000001",
+            message_id="m7",
+            type=MessageType.TEXT,
+            text="消费贷征信和风险测评规范",
+        )
+
+        with patch(
+            "customer.handlers.knowledge.provider.rag_client.retrieve",
+            new=AsyncMock(side_effect=RuntimeError("Connection refused")),
+        ):
+            chunks = await rag.execute(state, msg)
+
+        self.assertTrue(len(chunks) >= 1)
+        self.assertEqual(chunks[0].source_type, "local")
+        self.assertEqual(chunks[0].source, "中州银行金融合规知识库")
 
 
 if __name__ == "__main__":
