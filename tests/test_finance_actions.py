@@ -12,7 +12,9 @@ from customer.actions.builder import registry_action
 from customer.actions.impl.account_balance import AccountBalanceQueryAction
 from customer.actions.impl.card_loss import CardLossAction
 from customer.actions.impl.loan_application import LoanApplicationAction
+from customer.actions.impl.loan_progress_query import LoanProgressQueryAction
 from customer.actions.impl.ticket_action import ComplaintTicketAction
+from customer.actions.impl.ticket_query import TicketQueryAction
 from customer.actions.impl.transaction_query import TransactionQueryAction
 from customer.actions.registry import ActionRegistry
 from customer.clients.finance_client import FinanceClient
@@ -38,8 +40,10 @@ class TestFinanceActionRegistration(unittest.TestCase):
             "action_query_account_balance",
             "action_query_transactions",
             "action_apply_loan",
+            "action_query_loan_progress",
             "action_report_card_loss",
             "action_create_complaint_ticket",
+            "action_query_complaint_ticket",
         }
         self.assertTrue(expected.issubset(set(registry.actions.keys())))
 
@@ -256,6 +260,105 @@ class TestFinanceActionsExecution(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res.result["ticket_no"], "TKT202611180001")
         self.assertIn("TKT202611180001", res.result["reply"])
 
+    async def test_account_balance_normalizes_spaced_card_no(self):
+        action = AccountBalanceQueryAction()
+        state = _build_state("account_balance_query", {"account_no": "6222 0000 0000 0000 001"})
+
+        with patch(
+            "customer.actions.impl.account_balance.finance_client.get_account",
+            new=AsyncMock(
+                return_value={
+                    "account_no": "ACC0000000001",
+                    "account_status": "normal",
+                    "balance_amount": "2125.00",
+                    "frozen_amount": "0.00",
+                }
+            ),
+        ) as mock_get:
+            res = await action.run(state)
+
+        mock_get.assert_awaited_once_with(account_no="6222000000000000001", customer_no="CUST00000001")
+        self.assertEqual(res.result["resolved_account_no"], "ACC0000000001")
+        self.assertIn("您的账户 ACC0000000001", res.result["reply"])
+
+    async def test_loan_progress_query_action_and_404_error(self):
+        action = LoanProgressQueryAction()
+        missing_res = await action.run(_build_state("loan_progress_query", {}))
+        self.assertIn("贷款申请编号", missing_res.result["reply"])
+
+        state = _build_state("loan_progress_query", {"application_no": " LAP20261118155946689466 "})
+        with patch(
+            "customer.actions.impl.loan_progress_query.finance_client.get_loan_application",
+            new=AsyncMock(
+                return_value={
+                    "application_info": {
+                        "application_no": "LAP20261118155946689466",
+                        "apply_amount": "50000.00",
+                        "apply_term_months": 12,
+                        "application_status": "approved",
+                        "submitted_at": "2026-11-18 15:59:46",
+                    },
+                    "approval_records": [{"approval_comment": "风控自动核准"}],
+                    "contract_info": {"contract_no": "CON202611180001"},
+                }
+            ),
+        ) as mock_get:
+            res = await action.run(state)
+
+        mock_get.assert_awaited_once_with(application_no="LAP20261118155946689466", customer_no="CUST00000001")
+        self.assertIn("贷款申请编号【LAP20261118155946689466】", res.result["reply"])
+        self.assertIn("【审批通过】", res.result["reply"])
+        self.assertIn("CON202611180001", res.result["reply"])
+
+        req = httpx.Request("GET", "http://127.0.0.1:8000/api/v1/loan/applications/LAP404")
+        resp = httpx.Response(404, request=req, json={"code": "LOAN_APPLICATION_NOT_FOUND", "message": "贷款申请不存在"})
+        err = httpx.HTTPStatusError("404 Not Found", request=req, response=resp)
+        with patch(
+            "customer.actions.impl.loan_progress_query.finance_client.get_loan_application",
+            new=AsyncMock(side_effect=err),
+        ):
+            err_res = await action.run(_build_state("loan_progress_query", {"application_no": "LAP404"}))
+        self.assertIn("贷款申请不存在", err_res.result["reply"])
+
+    async def test_ticket_query_action_and_404_error(self):
+        action = TicketQueryAction()
+        missing_res = await action.run(_build_state("ticket_query", {}))
+        self.assertIn("工单编号", missing_res.result["reply"])
+
+        state = _build_state("ticket_query", {"ticket_no": " TKT20261118160255311779 "})
+        with patch(
+            "customer.actions.impl.ticket_query.finance_client.get_support_ticket",
+            new=AsyncMock(
+                return_value={
+                    "ticket_info": {
+                        "ticket_no": "TKT20261118160255311779",
+                        "ticket_type": "扣费异常",
+                        "ticket_status": "processing",
+                        "submitted_at": "2026-11-18 16:02:55",
+                    },
+                    "handler": {"employee_no": "EMP000006", "employee_name": "客服人员06"},
+                    "process_result": "正在核对通道扣款记录",
+                }
+            ),
+        ) as mock_get:
+            res = await action.run(state)
+
+        mock_get.assert_awaited_once_with(ticket_no="TKT20261118160255311779", customer_no="CUST00000001")
+        self.assertIn("工单编号【TKT20261118160255311779】（问题类型：扣费异常）", res.result["reply"])
+        self.assertIn("【处理中】", res.result["reply"])
+        self.assertIn("客服人员06", res.result["reply"])
+        self.assertIn("正在核对通道扣款记录", res.result["reply"])
+
+        req = httpx.Request("GET", "http://127.0.0.1:8000/api/v1/support/tickets/TKT404")
+        resp = httpx.Response(404, request=req, json={"code": "SUPPORT_TICKET_NOT_FOUND", "message": "客服工单不存在"})
+        err = httpx.HTTPStatusError("404 Not Found", request=req, response=resp)
+        with patch(
+            "customer.actions.impl.ticket_query.finance_client.get_support_ticket",
+            new=AsyncMock(side_effect=err),
+        ):
+            err_res = await action.run(_build_state("ticket_query", {"ticket_no": "TKT404"}))
+        self.assertIn("客服工单不存在", err_res.result["reply"])
+
 
 class TestFinanceClientContract(unittest.IsolatedAsyncioTestCase):
     """验证 FinanceClient 请求头与 finance-data 接口契约一致."""
@@ -329,6 +432,33 @@ class TestFinanceClientContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sent_payload["related_type"], "none")
         self.assertIn("TXN001", sent_payload["ticket_content"])
         self.assertEqual(sent_headers["X-Operator-No"], "EMP000006")
+
+    async def test_normalize_and_query_contracts(self):
+        client = FinanceClient(base_url="http://127.0.0.1:8000/api/v1")
+        self.assertEqual(client._normalize_identifier("6222 0000-0000 0000 001"), "6222000000000000001")
+
+        def make_resp(data: dict):
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.json.return_value = {"code": "OK", "data": data}
+            return resp
+
+        mock_http = MagicMock()
+        mock_http.get = AsyncMock(
+            side_effect=[
+                make_resp({"application_info": {"application_no": "LAP001", "application_status": "submitted"}}),
+                make_resp({"ticket_info": {"ticket_no": "TKT001", "ticket_status": "processing"}}),
+            ]
+        )
+
+        with patch.object(FinanceClient, "_http", return_value=mock_http):
+            loan_data = await client.get_loan_application(" LAP 001 ", customer_no="CUS00000031")
+            ticket_data = await client.get_support_ticket(" TKT-001 ", customer_no="CUS00000001")
+
+        self.assertEqual(loan_data["application_info"]["application_no"], "LAP001")
+        self.assertEqual(ticket_data["ticket_info"]["ticket_no"], "TKT001")
+        self.assertTrue(mock_http.get.await_args_list[0].args[0].endswith("/loan/applications/LAP001"))
+        self.assertTrue(mock_http.get.await_args_list[1].args[0].endswith("/support/tickets/TKT001"))
 
 
 if __name__ == "__main__":

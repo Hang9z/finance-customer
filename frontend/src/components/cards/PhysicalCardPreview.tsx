@@ -186,8 +186,13 @@ export const PhysicalCardPreview: React.FC<PhysicalCardPreviewProps> = ({
     );
   }
 
-  // transaction / ticket / fallback 票据样式（左侧打孔圆点装饰）
-  const isTicket = card.type === 'ticket';
+  // transaction / ticket / loan_application 票据样式（左侧打孔圆点装饰）
+  const microLabel =
+    card.type === 'ticket'
+      ? 'TICKET'
+      : card.type === 'loan_application'
+        ? 'LOAN APP'
+        : 'TXN';
   return (
     <div
       className={`relative w-full rounded-[8px] bg-surface border border-hairline p-3 pl-5 ${
@@ -208,7 +213,7 @@ export const PhysicalCardPreview: React.FC<PhysicalCardPreviewProps> = ({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="micro-label text-ink-2">
-              {isTicket ? 'TICKET' : 'TXN'}
+              {microLabel}
             </span>
             <span className="tabular-mono text-[11px] text-mist truncate">{card.id}</span>
           </div>

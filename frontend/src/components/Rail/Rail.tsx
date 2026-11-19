@@ -3,7 +3,9 @@ import {
   BookOpen,
   Briefcase,
   ChevronRight,
+  ClipboardCheck,
   CreditCard,
+  FileSearch,
   Landmark,
   ListOrdered,
   MessageSquareWarning,
@@ -37,8 +39,10 @@ const SCENARIO_ICON_MAP: Record<string, React.ComponentType<{ className?: string
   balance: Wallet,
   transactions: ListOrdered,
   loan: Landmark,
+  loan_progress: FileSearch,
   card_loss: CreditCard,
   ticket: MessageSquareWarning,
+  ticket_query: ClipboardCheck,
 };
 
 export const Rail: React.FC<RailProps> = ({

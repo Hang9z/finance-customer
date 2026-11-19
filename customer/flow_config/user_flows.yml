@@ -159,7 +159,7 @@ flows:
       - id: respond
         type: response
         template:
-          text: "您好，我是您的金融智能客服助手。我可以为您提供账户余额查询、交易明细查询、消费贷款申请、信用卡紧急挂失以及客服投诉工单处理等金融服务。"
+          text: "您好，我是您的金融智能客服助手。我可以为您提供账户余额查询、交易明细查询、消费贷款申请与审批进度查询、信用卡紧急挂失、客服投诉工单登记与进度查询等金融服务。"
         next: end
 
       - id: end
@@ -352,6 +352,66 @@ flows:
         type: response
         template:
           text: "{{ slots.reply or '您的投诉工单已创建成功，我们将尽快处理。' }}"
+        next: end
+
+      - id: end
+        type: end
+        next: []
+
+  loan_progress_query:
+    name: 贷款进度查询
+    description: 帮用户根据贷款申请编号查询消费或经营贷款的当前审批进度及合同信息。
+    steps:
+      - id: start
+        type: start
+        next: ask_application_no
+
+      - id: ask_application_no
+        type: collect
+        slot_name: application_no
+        template:
+          text: "请提供您需要查询进度的贷款申请编号（例如 LAP 开头的编号）。"
+        next: query_loan_progress
+
+      - id: query_loan_progress
+        type: action
+        action: action_query_loan_progress
+        next: show_loan_progress
+
+      - id: show_loan_progress
+        type: response
+        template:
+          text: "{{ slots.reply or '已为您完成贷款进度查询。' }}"
+        next: end
+
+      - id: end
+        type: end
+        next: []
+
+  ticket_query:
+    name: 工单进度查询
+    description: 帮用户根据客服工单编号查询投诉建议工单的当前处理进度及专席反馈。
+    steps:
+      - id: start
+        type: start
+        next: ask_ticket_no
+
+      - id: ask_ticket_no
+        type: collect
+        slot_name: ticket_no
+        template:
+          text: "请提供您需要查询进度的工单编号（例如 TKT 或 TCK 开头的编号）。"
+        next: query_ticket
+
+      - id: query_ticket
+        type: action
+        action: action_query_complaint_ticket
+        next: show_ticket_progress
+
+      - id: show_ticket_progress
+        type: response
+        template:
+          text: "{{ slots.reply or '已为您完成工单进度查询。' }}"
         next: end
 
       - id: end

@@ -6,6 +6,7 @@ from customer.actions.base import (
     ActionResult,
     format_action_error,
     get_active_slots,
+    normalize_identifier,
     resolve_customer_no,
 )
 from customer.clients.finance_client import finance_client
@@ -38,19 +39,20 @@ class TransactionQueryAction(Action):
 
     async def run(self, state: DialogueState) -> ActionResult:
         slots = get_active_slots(state)
-        account_no = slots.get("account_no") or slots.get("card_no")
+        raw_account_no = slots.get("account_no") or slots.get("card_no")
         start_date = slots.get("start_date") or slots.get("date")
         end_date = slots.get("end_date")
         customer_no = resolve_customer_no(state, slots)
 
-        if not account_no:
+        if not raw_account_no:
             return ActionResult(
                 result={"reply": "请提供需要查询交易明细的银行卡号或账户号。"}
             )
 
+        normalized_no = normalize_identifier(raw_account_no)
         try:
             data = await finance_client.get_transactions(
-                account_no=str(account_no),
+                account_no=normalized_no,
                 start_date=str(start_date) if start_date else None,
                 end_date=str(end_date) if end_date else None,
                 customer_no=customer_no,
@@ -60,10 +62,10 @@ class TransactionQueryAction(Action):
 
             return ActionResult(
                 result={
-                    "account_no": account_no,
+                    "account_no": normalized_no,
                     "total_count": total_count,
                     "transactions": items[:5],
-                    "reply": _format_transactions_reply(str(account_no), items, total_count),
+                    "reply": _format_transactions_reply(normalized_no, items, total_count),
                 }
             )
         except Exception as e:

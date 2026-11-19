@@ -5,7 +5,8 @@ const START_RE = /^好的[,，]\s*现在开始执行(.+?)$/;
 const RESUME_RE = /^好的[,，]\s*现在继续(.+?)$/;
 const CANCEL_RE = /^好的[,，]\s*现在取消(.+?)$/;
 
-const COMPLETION_RE = /成功|已为您|可用余额为|申请编号|工单编号|失败|格式有误/;
+const COMPLETION_RE =
+  /成功|已为您|可用余额为|申请编号为|工单编号为|当前审批状态为|当前处理状态为|失败|格式有误/;
 const AWAITING_START_RE = /^(?:请提供|请问|请详细|请告诉)/;
 
 export function parseTaskEvent(text: string): TaskEventInfo | null {
@@ -56,6 +57,12 @@ export function parseTaskEvent(text: string): TaskEventInfo | null {
 }
 
 function inferAwaitingLabel(question: string): string {
+  if (question.includes('贷款申请编号')) {
+    return '贷款申请编号';
+  }
+  if (question.includes('工单编号')) {
+    return '工单编号';
+  }
   if (question.includes('卡号') || question.includes('账户号')) {
     return '银行卡号 / 账户号';
   }

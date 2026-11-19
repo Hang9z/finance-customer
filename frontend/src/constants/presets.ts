@@ -7,6 +7,7 @@ export const OBJECT_SLOT_MAP: Record<string, string> = {
   account: 'account_no / card_no',
   card: 'card_no / account_no',
   loan_product: 'product_code',
+  loan_application: 'application_no',
   wealth_product: 'product_code',
   transaction: 'related_no',
   ticket: 'ticket_no / related_no',
@@ -67,6 +68,27 @@ export const CUSTOMER_PRESETS: CustomerPreset[] = [
         questionPrompt: '帮我查询个人储蓄副账户 ACC0000049001 的余额。',
       },
       {
+        type: 'card',
+        id: '6222000000000000001',
+        title: '中州银行一卡通借记卡',
+        attributes: {
+          balance: '2,125.00 CNY',
+          status: '正常',
+          accountNo: 'ACC0000000001',
+        },
+        questionPrompt: '帮我用银行卡号 6222000000000000001 查询账户余额。',
+      },
+      {
+        type: 'ticket',
+        id: 'TKT20261118160255311779',
+        title: '客服工单 · 扣费异常',
+        attributes: {
+          category: '扣费异常',
+          status: '已受理待处理',
+        },
+        questionPrompt: '帮我查询工单 TKT20261118160255311779 的处理进度。',
+      },
+      {
         type: 'transaction',
         id: 'TXN202611180001',
         title: '理财申购扣款 · 中州银行',
@@ -105,6 +127,27 @@ export const CUSTOMER_PRESETS: CustomerPreset[] = [
         questionPrompt: '帮我查一下账户 ACC0000000031 的余额。',
       },
       {
+        type: 'card',
+        id: '6222000000000000031',
+        title: '中州银行结算借记卡',
+        attributes: {
+          balance: '正常可用',
+          status: '正常',
+          accountNo: 'ACC0000000031',
+        },
+        questionPrompt: '帮我用银行卡 6222000000000000031 查询余额。',
+      },
+      {
+        type: 'loan_application',
+        id: 'LAP20261118155946689466',
+        title: '贷款申请单 · 50,000.00 元',
+        attributes: {
+          amount: '50,000.00 元',
+          status: '审核中',
+        },
+        questionPrompt: '请帮我查询贷款申请 LAP20261118155946689466 的审批进度。',
+      },
+      {
         type: 'loan_product',
         id: 'LOAN_BUSINESS_ECOM',
         title: '电商经营贷',
@@ -135,13 +178,14 @@ export const CUSTOMER_PRESETS: CustomerPreset[] = [
     cards: [
       {
         type: 'card',
-        id: 'ACC0000000002',
+        id: '6222000000000000002',
         title: '中州银行标准白金卡',
         attributes: {
           balance: '2,250.00 CNY',
           status: '正常',
+          accountNo: 'ACC0000000002',
         },
-        questionPrompt: '我的中州银行标准白金卡 ACC0000000002 丢了，要办理紧急挂失。',
+        questionPrompt: '我的中州银行标准白金卡 6222000000000000002 丢了，要办理紧急挂失。',
       },
     ],
   },
@@ -157,14 +201,20 @@ export const BUSINESS_SCENARIOS: ScenarioPromptItem[] = [
   {
     id: 'transactions',
     title: '交易明细查询',
-    prompt: '帮我查询账户 ACC0000000001 最近的交易流水',
-    description: '拉取中台实时流水明细并生成精排流水凭证',
+    prompt: '帮我查询卡号 6222000000000000001 最近的交易流水',
+    description: '支持银行卡号或账户号拉取中台实时流水明细',
   },
   {
     id: 'loan',
     title: '消费贷款申请',
     prompt: '我要申请消费贷款',
     description: '多轮收集贷款金额、还款期数并提交中台进件',
+  },
+  {
+    id: 'loan_progress',
+    title: '贷款进度查询',
+    prompt: '帮我查一下贷款申请 LAP20261118155946689466 的审批进度',
+    description: '按贷款申请编号实时查询审批进展与合同状态',
   },
   {
     id: 'card_loss',
@@ -177,6 +227,12 @@ export const BUSINESS_SCENARIOS: ScenarioPromptItem[] = [
     title: '投诉建议工单',
     prompt: '我要投诉扣费异常，今天凌晨账户被莫名扣除了 20 元服务费',
     description: '登记投诉分类与事实描述，生成支持工单回执',
+  },
+  {
+    id: 'ticket_query',
+    title: '工单进度查询',
+    prompt: '查一下工单 TKT20261118160255311779 的处理进度',
+    description: '按工单编号实时回查处理状态与专席反馈',
   },
 ];
 

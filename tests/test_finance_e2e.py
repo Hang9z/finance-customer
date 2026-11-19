@@ -252,6 +252,79 @@ class TestFinanceEndToEndFlows(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(any("WLT_STEADY_01" in m.text for m in res.messages))
 
+    async def test_loan_progress_query_with_object_card(self):
+        engine = build_engine()
+        state = DialogueState(sender_id="CUS00000031")
+        mock_planner = AsyncMock()
+        engine.turn_planner = mock_planner
+
+        mock_planner.plan.return_value = TurnPlan(
+            task=TaskTurnPlan(commands=[StartFlowCommand(command="start_flow", flow="loan_progress_query")])
+        )
+        r1 = await engine.process_message(state, _text_msg("查一下我的贷款审批进度", "m1", sender_id="CUS00000031"))
+        self.assertTrue(any("贷款申请编号" in m.text for m in r1.messages))
+
+        with patch(
+            "customer.actions.impl.loan_progress_query.finance_client.get_loan_application",
+            new=AsyncMock(
+                return_value={
+                    "application_info": {
+                        "application_no": "LAP20261118155946689466",
+                        "apply_amount": "50000.00",
+                        "apply_term_months": 12,
+                        "application_status": "submitted",
+                        "submitted_at": "2026-11-18 15:59:46",
+                    },
+                    "approval_records": [],
+                    "contract_info": None,
+                }
+            ),
+        ) as mock_get:
+            r2 = await engine.process_message(
+                state,
+                _object_msg("loan_application", "LAP20261118155946689466", "m2", sender_id="CUS00000031"),
+            )
+
+        mock_get.assert_awaited_once_with(application_no="LAP20261118155946689466", customer_no="CUS00000031")
+        self.assertTrue(any("贷款申请编号【LAP20261118155946689466】" in m.text and "【审核中】" in m.text for m in r2.messages))
+        self.assertIsNone(state.tasks.active)
+
+    async def test_ticket_query_with_object_card(self):
+        engine = build_engine()
+        state = DialogueState(sender_id="CUS00000001")
+        mock_planner = AsyncMock()
+        engine.turn_planner = mock_planner
+
+        mock_planner.plan.return_value = TurnPlan(
+            task=TaskTurnPlan(commands=[StartFlowCommand(command="start_flow", flow="ticket_query")])
+        )
+        r1 = await engine.process_message(state, _text_msg("我的工单处理到哪一步了", "m1", sender_id="CUS00000001"))
+        self.assertTrue(any("工单编号" in m.text for m in r1.messages))
+
+        with patch(
+            "customer.actions.impl.ticket_query.finance_client.get_support_ticket",
+            new=AsyncMock(
+                return_value={
+                    "ticket_info": {
+                        "ticket_no": "TKT20261118160255311779",
+                        "ticket_type": "扣费异常",
+                        "ticket_status": "submitted",
+                        "submitted_at": "2026-11-18 16:02:55",
+                    },
+                    "handler": {"employee_no": "EMP000006", "employee_name": "客服人员06"},
+                    "process_result": "",
+                }
+            ),
+        ) as mock_get:
+            r2 = await engine.process_message(
+                state,
+                _object_msg("ticket", "TKT20261118160255311779", "m2", sender_id="CUS00000001"),
+            )
+
+        mock_get.assert_awaited_once_with(ticket_no="TKT20261118160255311779", customer_no="CUS00000001")
+        self.assertTrue(any("工单编号【TKT20261118160255311779】" in m.text and "【已受理待处理】" in m.text for m in r2.messages))
+        self.assertIsNone(state.tasks.active)
+
 
 if __name__ == "__main__":
     unittest.main()

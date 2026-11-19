@@ -16,6 +16,7 @@ const CUSTOM_TYPE_OPTIONS: Array<{ value: ObjectCardType; label: string }> = [
   { value: 'account', label: '账户 (account)' },
   { value: 'card', label: '银行卡 (card)' },
   { value: 'loan_product', label: '贷款产品 (loan_product)' },
+  { value: 'loan_application', label: '贷款申请 (loan_application)' },
   { value: 'wealth_product', label: '理财产品 (wealth_product)' },
   { value: 'transaction', label: '交易流水 (transaction)' },
   { value: 'ticket', label: '客服工单 (ticket)' },

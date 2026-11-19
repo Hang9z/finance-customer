@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { Check, Copy } from 'lucide-react';
 
 const INLINE_TOKEN_RE =
-  /(\b(?:LAP|TKT|ACC|TXN|LMT)[A-Z0-9]+\b|[\d,]+\.\d{2}\s*(?:CNY|RMB|USD|元)|\bloss_reported\b)/g;
+  /(\b(?:LAP|TKT|TCK|ACC|TXN|LMT)[A-Z0-9]+\b|\b6222\d{12,15}\b|[\d,]+\.\d{2}\s*(?:CNY|RMB|USD|元)|\bloss_reported\b)/g;
 
 const CopyTokenChip: React.FC<{ token: string }> = ({ token }) => {
   const [copied, setCopied] = useState(false);

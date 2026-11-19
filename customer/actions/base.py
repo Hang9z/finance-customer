@@ -26,6 +26,11 @@ def get_active_slots(state: DialogueState) -> dict[str, Any]:
     return state.tasks.active.slots if state.tasks.active else {}
 
 
+def normalize_identifier(value: object) -> str:
+    """去除银行卡号、账户号或业务单号中的空格与连字符."""
+    return "".join(str(value).split()).replace("-", "")
+
+
 def resolve_customer_no(
     state: DialogueState,
     slots: dict[str, Any] | None = None,

@@ -189,6 +189,53 @@ export const ReceiptCard: React.FC<ReceiptCardProps> = ({
           </div>
         ) : null}
 
+        {receipt.kind === 'loan_progress' ? (
+          <div className="space-y-3">
+            <div>
+              <div className="text-[11px] text-ink-2">审批状态 / 申请额度</div>
+              <div className="flex items-baseline gap-2.5 mt-0.5">
+                <span className="text-[20px] font-serif font-semibold text-ink">
+                  {receipt.status}
+                </span>
+                <span className="tabular-mono text-[13px] text-ink-2">
+                  {receipt.amount} 元 · {receipt.termMonths} 期
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-[12px]">
+              <div>
+                <span className="text-ink-2 mr-1.5">申请编号</span>
+                <CopyCodeButton value={receipt.applicationNo} />
+              </div>
+              <span className="tabular-mono text-[11px] text-ink-2">
+                提交：{receipt.submittedAt}
+              </span>
+            </div>
+          </div>
+        ) : null}
+
+        {receipt.kind === 'ticket_progress' ? (
+          <div className="space-y-2.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-[16px] font-serif font-semibold text-ink">
+                {receipt.category}
+              </span>
+              <span className="text-[13px] font-medium text-celadon">
+                {receipt.status}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-[12px]">
+              <div>
+                <span className="text-ink-2 mr-1.5">工单编号</span>
+                <CopyCodeButton value={receipt.ticketNo} />
+              </div>
+              <span className="text-[11px] text-ink-2">
+                专席：{receipt.handlerName}
+              </span>
+            </div>
+          </div>
+        ) : null}
+
         {/* 右上角电子印章 */}
         <Seal
           text={receipt.sealText}

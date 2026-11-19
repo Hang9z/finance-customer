@@ -16,6 +16,12 @@ const TICKET_RE = /工单编号为【(\w+)】（问题类型：(.+?)）/;
 
 const CARD_LOSS_RE = /【(\w+)】已成功办理紧急挂失（状态：(\w+)）/;
 
+const LOAN_PROGRESS_RE =
+  /贷款申请编号【(\w+)】申请金额\s*([\d,.]+)\s*元，期限\s*(\d+)\s*个月，当前审批状态为【([^】]+)】(?:，提交时间：([^。]+))?/;
+
+const TICKET_PROGRESS_RE =
+  /工单编号【(\w+)】（问题类型：(.+?)）当前处理状态为【([^】]+)】(?:，负责专席：([^，。]+))?(?:，提交时间：([^。]+))?/;
+
 const CREDIT_TYPES = new Set([
   'deposit',
   'refund',
@@ -173,6 +179,40 @@ export function parseReceiptsAndCleanMarkdown(
       sealText: '已止付',
       cardNo: lossMatch[1],
       status: lossMatch[2],
+      createdAt,
+    });
+  }
+
+  // 6. 贷款进度回执
+  const loanProgressMatch = LOAN_PROGRESS_RE.exec(rawText);
+  if (loanProgressMatch) {
+    receipts.push({
+      id: `${baseId}_loan_prog`,
+      kind: 'loan_progress',
+      title: '贷款进度回执',
+      sealText: '已核验',
+      applicationNo: loanProgressMatch[1],
+      amount: loanProgressMatch[2],
+      termMonths: loanProgressMatch[3],
+      status: loanProgressMatch[4],
+      submittedAt: (loanProgressMatch[5] ?? '-').trim(),
+      createdAt,
+    });
+  }
+
+  // 7. 工单进度回执
+  const ticketProgressMatch = TICKET_PROGRESS_RE.exec(rawText);
+  if (ticketProgressMatch) {
+    receipts.push({
+      id: `${baseId}_tkt_prog`,
+      kind: 'ticket_progress',
+      title: '工单进度回执',
+      sealText: '已核验',
+      ticketNo: ticketProgressMatch[1],
+      category: ticketProgressMatch[2].trim(),
+      status: ticketProgressMatch[3],
+      handlerName: (ticketProgressMatch[4] ?? '专席客服').trim(),
+      submittedAt: (ticketProgressMatch[5] ?? '-').trim(),
       createdAt,
     });
   }

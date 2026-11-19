@@ -2,6 +2,7 @@ export type ObjectCardType =
   | 'account'
   | 'card'
   | 'loan_product'
+  | 'loan_application'
   | 'wealth_product'
   | 'transaction'
   | 'ticket';
@@ -123,6 +124,30 @@ export type ReceiptData =
       sealText: '已止付';
       cardNo: string;
       status: string;
+      createdAt: string;
+    }
+  | {
+      id: string;
+      kind: 'loan_progress';
+      title: '贷款进度回执';
+      sealText: '已核验';
+      applicationNo: string;
+      amount: string;
+      termMonths: string;
+      status: string;
+      submittedAt: string;
+      createdAt: string;
+    }
+  | {
+      id: string;
+      kind: 'ticket_progress';
+      title: '工单进度回执';
+      sealText: '已核验';
+      ticketNo: string;
+      category: string;
+      status: string;
+      handlerName: string;
+      submittedAt: string;
       createdAt: string;
     };
 

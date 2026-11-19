@@ -37,6 +37,11 @@ class FinanceClient:
             httpx_client_mod.init_httpx_client()
         return httpx_client_mod.httpx_client
 
+    @staticmethod
+    def _normalize_identifier(value: str) -> str:
+        """清洗银行卡号、账户号或业务单号中的空白和连字符."""
+        return "".join(str(value).split()).replace("-", "")
+
     def _build_headers(
         self,
         customer_no: str | None = None,
@@ -57,8 +62,9 @@ class FinanceClient:
     # ==================== 1. 账户与交易 ====================
 
     async def get_account(self, account_no: str, customer_no: str | None = None) -> dict[str, Any]:
-        """查询银行账户详情（含余额、可用余额、冻结金额、状态）."""
-        url = f"{self.base_url}/accounts/{account_no}"
+        """查询银行账户详情（支持账户号、银行卡号及 4 位数字尾号）."""
+        normalized_no = self._normalize_identifier(account_no)
+        url = f"{self.base_url}/accounts/{normalized_no}"
         headers = self._build_headers(customer_no)
         response = await self._http().get(url, headers=headers)
         response.raise_for_status()
@@ -73,8 +79,9 @@ class FinanceClient:
         page_size: int = 20,
         customer_no: str | None = None,
     ) -> dict[str, Any]:
-        """查询账户交易流水/明细."""
-        url = f"{self.base_url}/accounts/{account_no}/transactions"
+        """查询账户交易流水/明细（支持账户号、银行卡号及 4 位数字尾号）."""
+        normalized_no = self._normalize_identifier(account_no)
+        url = f"{self.base_url}/accounts/{normalized_no}/transactions"
         params: dict[str, Any] = {"page_no": page_no, "page_size": page_size}
         if start_date:
             params["start_time"] = f"{start_date}T00:00:00" if len(start_date) == 10 else start_date
@@ -94,8 +101,9 @@ class FinanceClient:
         request_no: str | None = None,
         customer_no: str | None = None,
     ) -> dict[str, Any]:
-        """变更账户状态（如信用卡挂失、账户冻结等）."""
-        url = f"{self.base_url}/accounts/{account_no}/status-changes"
+        """变更账户/关联银行卡状态（如信用卡挂失、账户冻结等）."""
+        normalized_no = self._normalize_identifier(account_no)
+        url = f"{self.base_url}/accounts/{normalized_no}/status-changes"
         payload = {
             "request_no": request_no or uuid.uuid4().hex,
             "target_status": target_status,
@@ -212,6 +220,19 @@ class FinanceClient:
         response.raise_for_status()
         return response.json().get("data", {})
 
+    async def get_loan_application(
+        self,
+        application_no: str,
+        customer_no: str | None = None,
+    ) -> dict[str, Any]:
+        """查询贷款申请进度与审批详情."""
+        normalized_no = self._normalize_identifier(application_no)
+        url = f"{self.base_url}/loan/applications/{normalized_no}"
+        headers = self._build_headers(customer_no)
+        response = await self._http().get(url, headers=headers)
+        response.raise_for_status()
+        return response.json().get("data", {})
+
     # ==================== 3. 运营与工单 ====================
 
     async def create_support_ticket(
@@ -246,6 +267,19 @@ class FinanceClient:
             operator_no=self.default_operator_no,
         )
         response = await self._http().post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response.json().get("data", {})
+
+    async def get_support_ticket(
+        self,
+        ticket_no: str,
+        customer_no: str | None = None,
+    ) -> dict[str, Any]:
+        """查询客服工单处理进度与详情."""
+        normalized_no = self._normalize_identifier(ticket_no)
+        url = f"{self.base_url}/support/tickets/{normalized_no}"
+        headers = self._build_headers(customer_no)
+        response = await self._http().get(url, headers=headers)
         response.raise_for_status()
         return response.json().get("data", {})
 
