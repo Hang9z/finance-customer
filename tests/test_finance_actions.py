@@ -8,6 +8,7 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from customer.actions.base import format_action_error
 from customer.actions.builder import registry_action
 from customer.actions.impl.account_balance import AccountBalanceQueryAction
 from customer.actions.impl.card_loss import CardLossAction
@@ -459,6 +460,11 @@ class TestFinanceClientContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ticket_data["ticket_info"]["ticket_no"], "TKT001")
         self.assertTrue(mock_http.get.await_args_list[0].args[0].endswith("/loan/applications/LAP001"))
         self.assertTrue(mock_http.get.await_args_list[1].args[0].endswith("/support/tickets/TKT001"))
+
+    def test_format_action_error_handles_timeout_and_empty_exceptions(self):
+        self.assertEqual(format_action_error(httpx.ReadTimeout("")), "中台服务响应超时，请稍后重试")
+        self.assertEqual(format_action_error(httpx.ConnectError("")), "中台服务连接异常，请稍后重试")
+        self.assertEqual(format_action_error(RuntimeError("")), "系统异常（RuntimeError）")
 
 
 if __name__ == "__main__":

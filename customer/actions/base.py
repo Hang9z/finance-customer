@@ -46,7 +46,7 @@ def resolve_customer_no(
 
 
 def format_action_error(exc: Exception) -> str:
-    """从 HTTPStatusError 或普通异常中提取友好的中文错误描述."""
+    """从 HTTPStatusError、超时/网络异常或普通异常中提取友好的中文错误描述."""
     if isinstance(exc, httpx.HTTPStatusError):
         try:
             payload = exc.response.json()
@@ -60,4 +60,10 @@ def format_action_error(exc: Exception) -> str:
         except Exception:
             pass
         return f"中台服务返回异常（HTTP {exc.response.status_code}）"
-    return str(exc)
+    if isinstance(exc, httpx.TimeoutException):
+        return "中台服务响应超时，请稍后重试"
+    if isinstance(exc, httpx.RequestError):
+        detail = str(exc).strip()
+        return f"中台服务连接异常（{detail}）" if detail else "中台服务连接异常，请稍后重试"
+    detail = str(exc).strip()
+    return detail or f"系统异常（{type(exc).__name__}）"
