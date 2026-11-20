@@ -1,6 +1,6 @@
 # 金融智能客服 × 金融智脑 RAG 联调与交接文档（HANDOFF）
 
-> 更新时间：2026-11-19  
+> 更新时间：2026-11-20  
 > 适用范围：[`d:\code\finance-customer`](file:///d:/code/finance-customer)、[`D:\code\finance_brain`](file:///D:/code/finance_brain)、[`D:\code\finance-data`](file:///D:/code/finance-data)
 
 ---
@@ -46,35 +46,16 @@
 
 ---
 
-## 三、当前 Git 状态（两个仓库均有少量未提交改动）
+## 三、已解决的核心瓶颈（2026-11-20 更新）
 
-1. **`d:\code\finance-customer`（分支 `master`，最近已推送提交 `3227234`）**
-   - 未提交修改文件（12 个，57 项单测与 `npm run build` 均已通过）：
-     - `.env.example`、`customer/config/config.py`、`customer/clients/rag_client.py`
-     - `customer/engine/dialogue_engine.py`、`customer/prompts/jinja2/turn_plan.jinja2`
-     - `customer/handlers/knowledge/{handler.py,intents.py,provider.py}`
-     - `frontend/src/{App.tsx,components/KnowledgeAdminModal.tsx,services/api.ts}`
-     - `tests/test_finance_knowledge.py`
-2. **`D:\code\finance_brain`（分支 `master`，最近已推送提交 `f4f95a3`；原版备份分支 `backup/original` -> `1497286`）**
-   - 未提交修改文件（3 个，核心 `processor/` 零改动）：
-     - `api/query_service.py`（对齐 `main_graph` 检索拓扑）
-     - `api/file_import_service.py`（`/import.html` 增加 `Cache-Control: no-store`）
-     - `page/import.html`（统一为金融客服账本纸张风格并移除内部 `.topbar`）
-
----
-
-## 四、已定位的待办焦点（新对话可直接从这里继续）
-
-### 待办 1：单文档多章节召回被 `limit=5` 与 `top_k=6` 截断的问题
+### 1. 已解决：单文档多章节召回被 `limit=5` 与 `top_k=6` 截断的问题
 - **现象**：以 Milvus 中《易方达智造优势混合型证券投资基金（易方达智造优势混合C）基金产品资料概要更新》为例，该文档在 `finance_chunks` 集合中共切分为 **13 条切片**（包含产品概况×2、投资目标与策略×3、资产配置图表×1、销售费用×1、运作扣除费用×1、**（三）基金运作综合费用测算 1.81%×1**、风险揭示×1、重要提示×1、其他查询方式×1）。
-- **根因**：
-  1. [`D:\code\finance_brain\processor\query_processor\nodes\node_search_embedding.py`](file:///D:/code/finance_brain/processor/query_processor/nodes/node_search_embedding.py#L95)（第 95 行）和 [`node_search_embedding_hyde.py`](file:///D:/code/finance_brain/processor/query_processor/nodes/node_search_embedding_hyde.py#L146)（第 146 行）中 `hybrid_search(..., limit=5)` 硬编码只取前 **5 条**；
-  2. [`D:\code\finance_brain\processor\query_processor\nodes\node_rrf.py`](file:///D:/code/finance_brain/processor/query_processor/nodes/node_rrf.py#L42)（第 42 行）中 `step_2_use_rrf_rank(data_list, k=60, top_k=6)` 硬编码只保留 **6 条** 本地切片。
-  3. 当用户仅输入产品名 `"易方达智造优势混合C"`（未带“费率/费用”词）时，前 5~6 名被《投资目标与策略》（占 2~3 条）、《产品概况》、《风险揭示》占满，排在第 7~10 名的《（三）基金运作综合费用测算（1.81%）》在进入 `node_rerank` 之前就被截断淘汰。
-- **解决方案**：
-  - 将 `node_search_embedding.py` 与 `node_search_embedding_hyde.py` 的 `limit` 从 `5` 调至 `15`；
-  - 将 `node_rrf.py` 的 `top_k` 从 `6` 调至 `12~15`（或在 `node_rrf` 中按 `parent_title` 做章节均衡去重，避免同一子章节连占 3 个名额）。
+- **落地改动**：
+  - 将 [`node_search_embedding.py`](file:///D:/code/finance_brain/processor/query_processor/nodes/node_search_embedding.py) 与 [`node_search_embedding_hyde.py`](file:///D:/code/finance_brain/processor/query_processor/nodes/node_search_embedding_hyde.py) 的 `create_hybrid_search_requests` 及 `hybrid_search` 的 `limit` 均调至 **`15`**；
+  - 将 [`node_rrf.py`](file:///D:/code/finance_brain/processor/query_processor/nodes/node_rrf.py) 的 `top_k` 从 `6` 上调至 **`15`**，确保单篇文档的全量章节切片都能进入 Rerank 精排。
 
-### 待办 2：Rerank 阶段超长切片处理的耗时与信息平衡
-- **现状**：[`node_rerank.py`](file:///D:/code/finance_brain/processor/query_processor/nodes/node_rerank.py#L118-L161) 的 `step_3_create_question_answer_pair` 对超过 512 tokens 的切片在 `for` 循环中串行调用大模型（`rerank_text_refine`）压缩摘要，全流程检索耗时约 `40s ~ 116s`。
-- **可选优化方向**：若后续既想保留长表格中间行信息、又想把耗时压回 3~5 秒，可采用**「并发调用 `rerank_text_refine`（`ThreadPoolExecutor` 并发压缩）」**或**「问题关键词锚点滑动窗口（KWIC）+ 表头拼接」**，或者切换支持 8k 窗口的 `bge-reranker-v2-m3`。
+### 2. 已解决：Rerank 阶段超长切片分块 Max-Pooling 无损提速（方案 C）
+- **原瓶颈**：[`node_rerank.py`](file:///D:/code/finance_brain/processor/query_processor/nodes/node_rerank.py) 原逻辑对超过 512 tokens 的切片在 `for` 循环中串行调用大模型（`rerank_text_refine`）压缩摘要，全流程检索耗时 `40s ~ 116s`。
+- **落地改动**：
+  - 在 [`node_rerank.py`](file:///D:/code/finance_brain/processor/query_processor/nodes/node_rerank.py) 中实现 `_split_text_for_rerank`（保留首行/表头上下文的重叠滑动窗口分块）与 `step_4_list_score_and_rank` 的单切片多子窗口 **Max-Pooling** 聚合打分；
+  - 无需调用 LLM 摘要且 **0 信息丢失**（全文每一段均参与 Reranker 批量打分，原始 `text` 完整保留），3400+ 字长切片的 Rerank 节点总耗时从 `40s+` 降至 **`~2.5s - 3.0s`**。
