@@ -11,7 +11,7 @@ from customer.domain.messages import UserMessage, ProcessResult, BotMessage, Mes
 from customer.domain.state import DialogueState, Session, Turn, FocusedObject
 from customer.engine.protocol import build_workflow_snapshot
 from customer.handlers.knowledge.handler import KnowledgeHandler
-from customer.handlers.knowledge.provider import KnowledgeChunk
+from customer.handlers.knowledge.provider import KnowledgeChunk, RAGProvider
 from customer.plan.command import SetSlotsCommand
 from customer.plan.turn_plan import TurnPlan, TurnPlanValidationResult, ClarifyReason
 from customer.plan.turn_plan_validation import TurnPlanValidation
@@ -371,13 +371,16 @@ class DialogueEngine:
         if rag_provider is None:
             return []
         try:
-            chunks = await rag_provider.execute(
-                state=state,
-                user_message=user_message,
-                enable_hyde=False,
-                enable_web=False,
-                skip_rewrite=True,
-            )
+            if isinstance(rag_provider, RAGProvider):
+                chunks = await rag_provider.execute(
+                    state=state,
+                    user_message=user_message,
+                    enable_hyde=False,
+                    enable_web=False,
+                    skip_rewrite=True,
+                )
+            else:
+                chunks = await rag_provider.execute(state=state, user_message=user_message)
         except Exception:
             return []
         return [

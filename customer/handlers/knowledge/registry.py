@@ -13,5 +13,5 @@ class KnowledgeProviderRegistry:
         }
 
     # # 从字典获取数据 根据provider_id获取provider对象
-    def get_provider(self, provider_id:str) -> KnowledgeProvider:
+    def get_provider(self, provider_id: str) -> KnowledgeProvider | None:
         return self.providers_dict.get(provider_id)
