@@ -373,8 +373,80 @@ class FinanceClient:
         """查询客服工单处理进度与详情."""
         normalized_no = self._normalize_identifier(ticket_no)
         url = f"{self.base_url}/support/tickets/{normalized_no}"
-        headers = self._build_headers(customer_no)
+        headers = self._build_headers(customer_no or self.default_operator_no)
         response = await self._http().get(url, headers=headers)
+        response.raise_for_status()
+        return response.json().get("data", {})
+
+    async def list_support_tickets(
+        self,
+        ticket_status: str | None = None,
+        customer_no: str | None = None,
+        keyword: str | None = None,
+        page_no: int = 1,
+        page_size: int = 20,
+        operator_no: str | None = None,
+    ) -> dict[str, Any]:
+        """分页查询客服工单列表（员工工单台）."""
+        url = f"{self.base_url}/support/tickets"
+        params: dict[str, Any] = {"page_no": page_no, "page_size": page_size}
+        if ticket_status:
+            params["ticket_status"] = ticket_status
+        if customer_no:
+            params["customer_no"] = customer_no
+        if keyword:
+            params["keyword"] = keyword
+        emp_no = operator_no or self.default_operator_no
+        headers = self._build_headers(emp_no, operator_no=emp_no)
+        response = await self._http().get(url, params=params, headers=headers)
+        response.raise_for_status()
+        return response.json().get("data", {})
+
+    async def handle_support_ticket(
+        self,
+        ticket_no: str,
+        ticket_status: str,
+        handle_result: str,
+        operator_no: str | None = None,
+        notify_customer: bool = True,
+        request_no: str | None = None,
+    ) -> dict[str, Any]:
+        """员工专席处理工单并写入结果与客户通知."""
+        normalized_no = self._normalize_identifier(ticket_no)
+        url = f"{self.base_url}/support/tickets/{normalized_no}/handle"
+        emp_no = operator_no or self.default_operator_no
+        payload = {
+            "request_no": request_no or uuid.uuid4().hex,
+            "ticket_status": ticket_status,
+            "handle_result": handle_result,
+            "operator_no": emp_no,
+            "notify_customer": notify_customer,
+        }
+        headers = self._build_headers(emp_no, operator_no=emp_no)
+        response = await self._http().post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response.json().get("data", {})
+
+    async def submit_ticket_feedback(
+        self,
+        ticket_no: str,
+        customer_no: str | None = None,
+        confirm_status: str = "confirmed",
+        satisfaction_score: int = 5,
+        feedback_content: str = "已确认处理结果",
+        request_no: str | None = None,
+    ) -> dict[str, Any]:
+        """客户对已处理工单提交确认与满意度评价."""
+        normalized_no = self._normalize_identifier(ticket_no)
+        url = f"{self.base_url}/support/tickets/{normalized_no}/feedback"
+        payload = {
+            "request_no": request_no or uuid.uuid4().hex,
+            "confirm_status": confirm_status,
+            "satisfaction_score": satisfaction_score,
+            "feedback_content": feedback_content,
+        }
+        headers = self._build_headers(customer_no or self.default_customer_no)
+        response = await self._http().post(url, json=payload, headers=headers)
         response.raise_for_status()
         return response.json().get("data", {})
 

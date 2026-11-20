@@ -553,6 +553,97 @@ class TestFinanceClientContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(format_action_error(httpx.ConnectError("")), "中台服务连接异常，请稍后重试")
         self.assertEqual(format_action_error(RuntimeError("")), "系统异常（RuntimeError）")
 
+    async def test_human_handoff_creates_ticket_from_recent_context(self):
+        from customer.domain.messages import MessageType, UserMessage
+        from customer.domain.state import Session, Turn
+
+        action = ComplaintTicketAction()
+        state = _build_state("human_handoff", {}, sender_id="CUS00000001")
+        state.shared.sessions.append(
+            Session(
+                session_id="s_handoff",
+                started_at=1.0,
+                last_activity_at=1.0,
+                turns=[
+                    Turn(
+                        turn_id="t1",
+                        user_message=UserMessage(
+                            sender_id="CUS00000001",
+                            message_id="m1",
+                            type=MessageType.TEXT,
+                            text="我的银行卡被异常扣了20元，请转人工",
+                        ),
+                    )
+                ],
+            )
+        )
+
+        with patch(
+            "customer.actions.impl.ticket_action.finance_client.create_support_ticket",
+            new=AsyncMock(return_value={"ticket_no": "TKT_HANDOFF_01", "ticket_status": "submitted"}),
+        ) as mock_create:
+            res = await action.run(state)
+
+        self.assertEqual(res.result["ticket_no"], "TKT_HANDOFF_01")
+        self.assertEqual(res.receipt["kind"], "ticket")
+        self.assertEqual(res.receipt["title"], "人工跟进回执")
+        self.assertIn("异常扣了20元", mock_create.await_args.kwargs["description"])
+
+    async def test_push_ticket_feedback_to_customer_and_admin_handle_route(self):
+        from customer.api.chat_router import admin_handle_ticket
+        from customer.api.schemas import AdminTicketHandleRequest
+        from customer.domain.state import DialogueState
+        from customer.service.dialogue_service import DialogueService
+
+        saved_states: list[DialogueState] = []
+
+        class FakeRepo:
+            async def load_state(self, sender_id: str) -> DialogueState:
+                return DialogueState(sender_id=sender_id)
+
+            async def save_state(self, state: DialogueState) -> None:
+                saved_states.append(state)
+
+        fake_engine = MagicMock()
+        service = DialogueService(repository=FakeRepo(), engine=fake_engine)
+        req = AdminTicketHandleRequest(
+            ticket_status="resolved",
+            handle_result="经核实已为您原路退还20元至账户 ACC0000000001。",
+            operator_no="EMP000006",
+            notify_customer=True,
+            push_to_chat=True,
+        )
+
+        with patch(
+            "customer.api.chat_router.finance_client.handle_support_ticket",
+            new=AsyncMock(
+                return_value={
+                    "ticket_info": {
+                        "ticket_no": "TKT20261120001",
+                        "ticket_type": "扣费异常",
+                        "ticket_status": "resolved",
+                        "handle_result": "经核实已为您原路退还20元至账户 ACC0000000001。",
+                        "submitted_at": "2026-11-20 16:00:00",
+                        "handled_at": "2026-11-20 16:20:00",
+                    },
+                    "customer": {"customer_no": "CUS00000001", "customer_name": "张三"},
+                    "handler": {"employee_no": "EMP000006", "employee_name": "客服人员06"},
+                    "process_result": "经核实已为您原路退还20元至账户 ACC0000000001。",
+                }
+            ),
+        ):
+            out = await admin_handle_ticket("TKT20261120001", req, dialogue_service=service)
+
+        self.assertTrue(out["chat_push"]["pushed"])
+        self.assertEqual(len(saved_states), 1)
+        last_turn = saved_states[0].shared.sessions[-1].turns[-1]
+        self.assertEqual(last_turn.user_message.text, "")
+        bot_msg = last_turn.bot_message[0]
+        self.assertIn("ACC****0001", bot_msg.text)
+        self.assertEqual(bot_msg.receipt["kind"], "ticket_progress")
+        self.assertEqual(bot_msg.receipt["status"], "已解决")
+        self.assertIn("ACC****0001", bot_msg.receipt["processResult"])
+
 
 if __name__ == "__main__":
     unittest.main()

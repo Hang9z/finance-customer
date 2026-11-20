@@ -7,16 +7,18 @@ import uuid
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 
 from customer.api.dependencies import get_dialogue_service
 from customer.api.schemas import (
+    AdminTicketHandleRequest,
     ChatMessage,
     ChatObject,
     ChatRequest,
     ChatResponse,
     CustomerAssetsResponse,
+    CustomerTicketFeedbackRequest,
     HistoryMessage,
     HistoryResponse,
     RagStatusResponse,
@@ -183,15 +185,16 @@ async def chat_history(
     for session in sessions:
         turns: list[Turn] = session.turns
         for turn in turns:
-            messages.append(
-                HistoryMessage(
-                    role="user",
-                    text=turn.user_message.text,
-                    object=ChatObject(**asdict(turn.user_message.object))
-                    if turn.user_message.object
-                    else None,
+            if turn.user_message and (turn.user_message.text or turn.user_message.object):
+                messages.append(
+                    HistoryMessage(
+                        role="user",
+                        text=turn.user_message.text,
+                        object=ChatObject(**asdict(turn.user_message.object))
+                        if turn.user_message.object
+                        else None,
+                    )
                 )
-            )
             messages.extend(
                 [
                     HistoryMessage(
@@ -290,3 +293,88 @@ async def rag_status() -> RagStatusResponse:
         chat_url=f"{query_base}/chat.html",
         import_url=f"{import_base}/import.html",
     )
+
+
+@chat_router.get("/api/admin/tickets")
+async def admin_list_tickets(
+    ticket_status: str | None = None,
+    customer_no: str | None = None,
+    keyword: str | None = None,
+    page_no: int = 1,
+    page_size: int = 20,
+    operator_no: str | None = None,
+) -> dict[str, Any]:
+    """员工工单管理台：分页查询客户投诉/反馈/人工跟进工单列表."""
+    try:
+        return await finance_client.list_support_tickets(
+            ticket_status=ticket_status,
+            customer_no=customer_no,
+            keyword=keyword,
+            page_no=page_no,
+            page_size=page_size,
+            operator_no=operator_no,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"拉取中台工单列表失败: {exc}") from exc
+
+
+@chat_router.get("/api/admin/tickets/{ticket_no}")
+async def admin_get_ticket(ticket_no: str) -> dict[str, Any]:
+    """员工工单管理台：查询单张工单详情."""
+    try:
+        return await finance_client.get_support_ticket(ticket_no=ticket_no)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"查询中台工单详情失败: {exc}") from exc
+
+
+@chat_router.post("/api/admin/tickets/{ticket_no}/handle")
+async def admin_handle_ticket(
+    ticket_no: str,
+    body: AdminTicketHandleRequest,
+    dialogue_service: DialogueService = Depends(get_dialogue_service),
+) -> dict[str, Any]:
+    """员工工单管理台：提交处理结果并实时向客户对话窗反馈进度."""
+    try:
+        handled = await finance_client.handle_support_ticket(
+            ticket_no=ticket_no,
+            ticket_status=body.ticket_status,
+            handle_result=body.handle_result,
+            operator_no=body.operator_no,
+            notify_customer=body.notify_customer,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"提交中台工单处理失败: {exc}") from exc
+
+    push_result: dict[str, Any] | None = None
+    customer_info = handled.get("customer") or {}
+    customer_no = str(customer_info.get("customer_no") or "").strip()
+    if body.push_to_chat and customer_no:
+        push_result = await dialogue_service.push_ticket_feedback_to_customer(
+            customer_no=customer_no,
+            ticket_data=handled,
+        )
+
+    return {
+        **handled,
+        "chat_push": push_result,
+    }
+
+
+@chat_router.post("/api/customer/tickets/{ticket_no}/feedback")
+async def customer_submit_ticket_feedback(
+    ticket_no: str,
+    body: CustomerTicketFeedbackRequest,
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    """客户对专席工单处理结果提交确认与满意度评价."""
+    validate_sender_authorization(body.customer_no, authorization)
+    try:
+        return await finance_client.submit_ticket_feedback(
+            ticket_no=ticket_no,
+            customer_no=body.customer_no,
+            confirm_status=body.confirm_status,
+            satisfaction_score=body.satisfaction_score,
+            feedback_content=body.feedback_content,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"提交工单确认评价失败: {exc}") from exc

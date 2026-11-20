@@ -174,16 +174,19 @@ export function normalizeServerReceipt(
     };
   }
   if (kind === 'ticket_progress') {
+    const rawTitle = readStr(raw, 'title');
     return {
       id,
       kind: 'ticket_progress',
-      title: '工单进度回执',
-      sealText: '已核验',
+      title: rawTitle === '专席反馈凭证' ? '专席反馈凭证' : '工单进度回执',
+      sealText: readStr(raw, 'sealText') || '已核验',
       ticketNo: readStr(raw, 'ticketNo'),
       category: readStr(raw, 'category', '客服工单'),
       status: readStr(raw, 'status', '-'),
       handlerName: readStr(raw, 'handlerName', '专席客服'),
+      processResult: readStr(raw, 'processResult'),
       submittedAt: readStr(raw, 'submittedAt', '-'),
+      handledAt: readStr(raw, 'handledAt'),
       createdAt,
     };
   }

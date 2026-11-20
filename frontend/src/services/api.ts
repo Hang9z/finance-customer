@@ -429,3 +429,119 @@ export async function fetchRagStatus(
     cleanup();
   }
 }
+
+export interface AdminTicketItem {
+  id: number;
+  ticket_no: string;
+  customer_no: string;
+  customer_name?: string | null;
+  ticket_type: string;
+  ticket_title: string;
+  ticket_content: string;
+  ticket_status: string;
+  handle_result?: string | null;
+  assignee_no?: string | null;
+  assignee_name?: string | null;
+  submitted_at?: string | null;
+  handled_at?: string | null;
+  closed_at?: string | null;
+  feedback_no?: string | null;
+  confirm_status?: string | null;
+  satisfaction_score?: number | null;
+  feedback_content?: string | null;
+}
+
+export interface AdminEmployeeOption {
+  employee_no: string;
+  employee_name: string;
+  employee_role: string;
+}
+
+export interface AdminTicketListResponse {
+  list: AdminTicketItem[];
+  page_no: number;
+  page_size: number;
+  total_count: number;
+  status_counts?: Record<string, number>;
+  employees?: AdminEmployeeOption[];
+}
+
+export interface AdminTicketHandlePayload {
+  ticket_status: string;
+  handle_result: string;
+  operator_no?: string;
+  notify_customer?: boolean;
+  push_to_chat?: boolean;
+}
+
+export interface AdminTicketHandleResponse {
+  ticket_info: Record<string, unknown>;
+  customer?: { customer_no?: string; customer_name?: string } | null;
+  handler?: { employee_no?: string; employee_name?: string } | null;
+  process_result?: string;
+  notification_no?: string | null;
+  chat_push?: { customer_no?: string; ticket_no?: string; pushed?: boolean } | null;
+}
+
+export async function fetchAdminTickets(params: {
+  ticket_status?: string;
+  customer_no?: string;
+  keyword?: string;
+  page_no?: number;
+  page_size?: number;
+  operator_no?: string;
+}): Promise<AdminTicketListResponse> {
+  const qs = new URLSearchParams();
+  if (params.ticket_status) qs.set('ticket_status', params.ticket_status);
+  if (params.customer_no) qs.set('customer_no', params.customer_no);
+  if (params.keyword) qs.set('keyword', params.keyword);
+  qs.set('page_no', String(params.page_no ?? 1));
+  qs.set('page_size', String(params.page_size ?? 30));
+  if (params.operator_no) qs.set('operator_no', params.operator_no);
+
+  const response = await fetch(`/api/admin/tickets?${qs.toString()}`);
+  if (!response.ok) {
+    throw new Error(`拉取工单列表失败 (${response.status})`);
+  }
+  return (await response.json()) as AdminTicketListResponse;
+}
+
+export async function handleAdminTicket(
+  ticketNo: string,
+  payload: AdminTicketHandlePayload,
+): Promise<AdminTicketHandleResponse> {
+  const response = await fetch(`/api/admin/tickets/${encodeURIComponent(ticketNo)}/handle`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    throw new Error(errText || `处理工单失败 (${response.status})`);
+  }
+  return (await response.json()) as AdminTicketHandleResponse;
+}
+
+export async function submitCustomerTicketFeedback(
+  ticketNo: string,
+  payload: {
+    customer_no: string;
+    confirm_status?: string;
+    satisfaction_score?: number;
+    feedback_content?: string;
+  },
+): Promise<{ feedback_no?: string; confirm_status?: string }> {
+  const response = await fetchWithSessionAuth(
+    payload.customer_no,
+    `/api/customer/tickets/${encodeURIComponent(ticketNo)}/feedback`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`提交工单确认失败 (${response.status})`);
+  }
+  return (await response.json()) as { feedback_no?: string; confirm_status?: string };
+}

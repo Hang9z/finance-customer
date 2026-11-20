@@ -30,6 +30,7 @@ import { InlineMarkdown } from './InlineMarkdown';
 const THINKING_PHASES = ['理解意图', '推进流程', '查询中台'];
 
 interface ConversationProps {
+  customerId?: string;
   timeline: TimelineItem[];
   workflow: WorkflowState;
   quickReplies: QuickReplyOption[];
@@ -155,6 +156,7 @@ const CitationPanel: React.FC<{ citations: KnowledgeCitation[] }> = ({ citations
 };
 
 export const Conversation: React.FC<ConversationProps> = ({
+  customerId,
   timeline,
   workflow,
   quickReplies,
@@ -362,6 +364,7 @@ export const Conversation: React.FC<ConversationProps> = ({
                       <ReceiptCard
                         receipt={receipt}
                         sealTone={receipt.id === latestReceiptId ? 'seal' : 'ink'}
+                        customerId={customerId}
                       />
                     </div>
                   ))}

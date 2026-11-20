@@ -77,3 +77,18 @@ class RagStatusResponse(BaseModel):
     query_url: str
     chat_url: str
     import_url: str
+
+
+class AdminTicketHandleRequest(BaseModel):
+    ticket_status: str
+    handle_result: str
+    operator_no: str | None = None
+    notify_customer: bool = True
+    push_to_chat: bool = True
+
+
+class CustomerTicketFeedbackRequest(BaseModel):
+    customer_no: str
+    confirm_status: str = "confirmed"
+    satisfaction_score: int = 5
+    feedback_content: str = "已确认处理结果"

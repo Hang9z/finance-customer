@@ -5,9 +5,10 @@ import { ReceiptCard } from '../receipts/ReceiptCard';
 
 interface ReceiptBookProps {
   receipts: ReceiptData[];
+  customerId?: string;
 }
 
-export const ReceiptBook: React.FC<ReceiptBookProps> = ({ receipts }) => {
+export const ReceiptBook: React.FC<ReceiptBookProps> = ({ receipts, customerId }) => {
   if (receipts.length === 0) {
     return (
       <div className="py-12 px-4 text-center space-y-2 border border-dashed border-hairline rounded-[8px] bg-paper/50">
@@ -31,7 +32,12 @@ export const ReceiptBook: React.FC<ReceiptBookProps> = ({ receipts }) => {
 
       <div className="space-y-3">
         {[...receipts].reverse().map((receipt) => (
-          <ReceiptCard key={receipt.id} receipt={receipt} sealTone="ink" />
+          <ReceiptCard
+            key={receipt.id}
+            receipt={receipt}
+            sealTone="ink"
+            customerId={customerId}
+          />
         ))}
       </div>
     </div>

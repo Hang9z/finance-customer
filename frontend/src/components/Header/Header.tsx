@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   BookOpen,
+  ClipboardList,
   Eraser,
   PanelRightClose,
   PanelRightOpen,
@@ -20,6 +21,7 @@ interface HeaderProps {
   onClearLocalView: () => void;
   onToggleLedger: () => void;
   onOpenKnowledgeAdmin: () => void;
+  onOpenTicketAdmin: () => void;
 }
 
 const HealthIndicator: React.FC<{
@@ -55,6 +57,7 @@ export const Header: React.FC<HeaderProps> = ({
   onClearLocalView,
   onToggleLedger,
   onOpenKnowledgeAdmin,
+  onOpenTicketAdmin,
 }) => {
   const preset = CUSTOMER_PRESETS.find((c) => c.id === customerId);
   const displayName = preset?.name ?? '自定义客户';
@@ -86,6 +89,16 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="flex items-center gap-1 border-l border-hairline pl-2 md:pl-3">
+          <button
+            type="button"
+            onClick={onOpenTicketAdmin}
+            aria-label="打开员工工单后台"
+            title="员工后台：处理投诉与反馈工单"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[12px] text-ink-2 hover:text-ink hover:bg-paper transition-colors"
+          >
+            <ClipboardList className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">员工工单台</span>
+          </button>
           <button
             type="button"
             onClick={onOpenKnowledgeAdmin}

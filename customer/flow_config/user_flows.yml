@@ -183,16 +183,21 @@ flows:
 
   human_handoff:
     name: 人工客服
-    description: 将当前对话转交给人工客服专员处理。
+    description: 将当前对话转交给人工客服专员处理，并自动登记人工跟进工单。
     steps:
       - id: start
         type: start
+        next: submit_handoff
+
+      - id: submit_handoff
+        type: action
+        action: action_create_complaint_ticket
         next: respond
 
       - id: respond
         type: response
         template:
-          text: "好的，已为您转接银行人工客服专员，请稍候。"
+          text: "{{ slots.reply or '好的，已为您转接银行人工客服专员，请稍候。' }}"
         next: end
 
       - id: end
@@ -399,6 +404,8 @@ flows:
             value: "服务态度"
           - label: "系统故障"
             value: "系统故障"
+          - label: "产品与功能建议"
+            value: "产品与功能建议"
         next: ask_desc
 
       - id: ask_desc

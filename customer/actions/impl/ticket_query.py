@@ -77,7 +77,9 @@ class TicketQueryAction(Action):
                     "category": ticket_type,
                     "status": status_text,
                     "handlerName": handler_name,
+                    "processResult": process_result,
                     "submittedAt": submitted_at,
+                    "handledAt": str(info.get("handled_at") or info.get("closed_at") or ""),
                 },
             )
         except Exception as e:

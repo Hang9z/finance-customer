@@ -1,13 +1,137 @@
 import React, { useState } from 'react';
-import { Check, Copy } from 'lucide-react';
+import { Check, CheckCircle2, Copy, Star } from 'lucide-react';
 import { formatCardNoDisplay } from '../../lib/receipts';
+import { submitCustomerTicketFeedback } from '../../services/api';
 import { ReceiptData } from '../../types/chat';
 import { Seal } from '../Seal';
 
 interface ReceiptCardProps {
   receipt: ReceiptData;
   sealTone?: 'seal' | 'ink';
+  customerId?: string;
 }
+
+const TicketProgressBody: React.FC<{
+  receipt: Extract<ReceiptData, { kind: 'ticket_progress' }>;
+  customerId?: string;
+}> = ({ receipt, customerId }) => {
+  const [score, setScore] = useState(5);
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submittedText, setSubmittedText] = useState<string | null>(null);
+  const [errorText, setErrorText] = useState<string | null>(null);
+
+  const canEvaluate =
+    Boolean(customerId) &&
+    (receipt.status.includes('解决') ||
+      receipt.status.includes('完结') ||
+      receipt.status.includes('处理中'));
+
+  const handleConfirmFeedback = async () => {
+    if (!customerId || !receipt.ticketNo) {
+      return;
+    }
+    setSubmitting(true);
+    setErrorText(null);
+    try {
+      await submitCustomerTicketFeedback(receipt.ticketNo, {
+        customer_no: customerId,
+        confirm_status: 'confirmed',
+        satisfaction_score: score,
+        feedback_content: note.trim() || '客户已确认处理结果',
+      });
+      setSubmittedText(`已确认结果并提交 ${score} 星评价`);
+    } catch (err) {
+      setErrorText(err instanceof Error ? err.message : '提交评价失败，请稍后重试');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[16px] font-serif font-semibold text-ink">
+          {receipt.category}
+        </span>
+        <span className="text-[13px] font-medium text-celadon">
+          {receipt.status}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-3 text-[12px]">
+        <div>
+          <span className="text-ink-2 mr-1.5">工单编号</span>
+          <CopyCodeButton value={receipt.ticketNo} />
+        </div>
+        <span className="text-[11px] text-ink-2">
+          专席：{receipt.handlerName}
+        </span>
+        {receipt.handledAt ? (
+          <span className="tabular-mono text-[11px] text-mist">
+            处理：{receipt.handledAt}
+          </span>
+        ) : null}
+      </div>
+      {receipt.processResult ? (
+        <div className="rounded-[8px] border border-hairline bg-paper px-3 py-2 text-[12px] text-ink leading-relaxed">
+          <div className="text-[11px] text-ink-2 mb-0.5 font-medium">专席处理反馈</div>
+          <div className="whitespace-pre-wrap break-words">{receipt.processResult}</div>
+        </div>
+      ) : null}
+      {canEvaluate ? (
+        <div className="pt-1 border-t border-hairline/70 space-y-2">
+          {submittedText ? (
+            <div className="inline-flex items-center gap-1.5 text-[11px] text-celadon font-medium">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>{submittedText}</span>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="inline-flex items-center gap-1 text-[11px] text-ink-2">
+                  <span>满意度：</span>
+                  {[1, 2, 3, 4, 5].map((starVal) => (
+                    <button
+                      key={starVal}
+                      type="button"
+                      onClick={() => setScore(starVal)}
+                      className="p-0.5 hover:scale-110 transition-transform"
+                      title={`${starVal} 星`}
+                    >
+                      <Star
+                        className={`w-3.5 h-3.5 ${
+                          starVal <= score ? 'text-amber fill-amber' : 'text-mist'
+                        }`}
+                      />
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => void handleConfirmFeedback()}
+                  className="px-2.5 py-1 rounded-[6px] bg-celadon text-white text-[11px] font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                >
+                  {submitting ? '提交中...' : '确认处理结果'}
+                </button>
+              </div>
+              <input
+                type="text"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="可选：填写补充评价或回访意见..."
+                className="w-full px-2.5 py-1 rounded-[6px] border border-hairline bg-paper text-[11px] text-ink placeholder:text-mist focus:outline-none focus:border-ink"
+              />
+              {errorText ? (
+                <div className="text-[11px] text-seal">{errorText}</div>
+              ) : null}
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+};
 
 const CopyCodeButton: React.FC<{ value: string; strike?: boolean }> = ({
   value,
@@ -42,6 +166,7 @@ const CopyCodeButton: React.FC<{ value: string; strike?: boolean }> = ({
 export const ReceiptCard: React.FC<ReceiptCardProps> = ({
   receipt,
   sealTone = 'seal',
+  customerId,
 }) => {
   return (
     <div className="relative bg-surface border border-hairline rounded-[10px] shadow-ledger overflow-hidden animate-message-enter">
@@ -215,25 +340,7 @@ export const ReceiptCard: React.FC<ReceiptCardProps> = ({
         ) : null}
 
         {receipt.kind === 'ticket_progress' ? (
-          <div className="space-y-2.5">
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="text-[16px] font-serif font-semibold text-ink">
-                {receipt.category}
-              </span>
-              <span className="text-[13px] font-medium text-celadon">
-                {receipt.status}
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-3 text-[12px]">
-              <div>
-                <span className="text-ink-2 mr-1.5">工单编号</span>
-                <CopyCodeButton value={receipt.ticketNo} />
-              </div>
-              <span className="text-[11px] text-ink-2">
-                专席：{receipt.handlerName}
-              </span>
-            </div>
-          </div>
+          <TicketProgressBody receipt={receipt} customerId={customerId} />
         ) : null}
 
         {receipt.kind === 'credit_limit' ? (

@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Composer } from './components/Composer/Composer';
 import { Conversation } from './components/Conversation/Conversation';
+import { EmployeeTicketAdminModal } from './components/EmployeeTicketAdminModal';
 import { Header } from './components/Header/Header';
 import { KnowledgeAdminModal } from './components/KnowledgeAdminModal';
 import { Ledger, LedgerTab } from './components/Ledger/Ledger';
@@ -45,8 +46,23 @@ export const App: React.FC = () => {
   const [ledgerTab, setLedgerTab] = useState<LedgerTab>('wallet');
   const [flashLedgerBorder, setFlashLedgerBorder] = useState(false);
   const [kbAdminOpen, setKbAdminOpen] = useState(false);
+  const isStandaloneAdmin =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('view') === 'admin';
+  const [ticketAdminOpen, setTicketAdminOpen] = useState(isStandaloneAdmin);
 
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
+
+  if (isStandaloneAdmin) {
+    return (
+      <EmployeeTicketAdminModal
+        isOpen
+        fullPage
+        onClose={() => setTicketAdminOpen(false)}
+        currentCustomerId={customerId}
+      />
+    );
+  }
 
   const handleOpenWalletFromComposer = () => {
     setLedgerTab('wallet');
@@ -91,6 +107,7 @@ export const App: React.FC = () => {
             onClearLocalView={clearLocalView}
             onToggleLedger={() => setLedgerOpen((prev) => !prev)}
             onOpenKnowledgeAdmin={() => setKbAdminOpen(true)}
+            onOpenTicketAdmin={() => setTicketAdminOpen(true)}
           />
 
           <WorkflowStrip
@@ -100,6 +117,7 @@ export const App: React.FC = () => {
           />
 
           <Conversation
+            customerId={customerId}
             timeline={timeline}
             workflow={workflow}
             quickReplies={quickReplies}
@@ -124,6 +142,7 @@ export const App: React.FC = () => {
         </main>
 
         <Ledger
+          customerId={customerId}
           isOpen={ledgerOpen}
           activeTab={ledgerTab}
           onChangeTab={setLedgerTab}
@@ -147,6 +166,17 @@ export const App: React.FC = () => {
         onClose={() => setKbAdminOpen(false)}
         importOnline={ragEndpoints.importOnline}
         importUrl={ragEndpoints.importUrl}
+      />
+
+      <EmployeeTicketAdminModal
+        isOpen={ticketAdminOpen}
+        onClose={() => setTicketAdminOpen(false)}
+        currentCustomerId={customerId}
+        onTicketHandled={(affectedCustomerNo) => {
+          if (affectedCustomerNo === customerId) {
+            void refreshHistory();
+          }
+        }}
       />
     </div>
   );

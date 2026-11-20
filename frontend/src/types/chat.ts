@@ -238,13 +238,15 @@ export type ReceiptData =
   | {
       id: string;
       kind: 'ticket_progress';
-      title: '工单进度回执';
-      sealText: '已核验';
+      title: '工单进度回执' | '专席反馈凭证';
+      sealText: string;
       ticketNo: string;
       category: string;
       status: string;
       handlerName: string;
+      processResult?: string;
       submittedAt: string;
+      handledAt?: string;
       createdAt: string;
     }
   | {

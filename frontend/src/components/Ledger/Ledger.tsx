@@ -7,6 +7,7 @@ import { ReceiptBook } from './ReceiptBook';
 export type LedgerTab = 'wallet' | 'receipts';
 
 interface LedgerProps {
+  customerId?: string;
   isOpen: boolean;
   activeTab: LedgerTab;
   onChangeTab: (tab: LedgerTab) => void;
@@ -25,6 +26,7 @@ interface LedgerProps {
 }
 
 export const Ledger: React.FC<LedgerProps> = ({
+  customerId,
   isOpen,
   activeTab,
   onChangeTab,
@@ -103,7 +105,7 @@ export const Ledger: React.FC<LedgerProps> = ({
             onAddCustomCard={onAddCustomCard}
           />
         ) : (
-          <ReceiptBook receipts={receipts} />
+          <ReceiptBook receipts={receipts} customerId={customerId} />
         )}
       </div>
     </div>
