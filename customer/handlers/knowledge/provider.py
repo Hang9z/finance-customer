@@ -105,10 +105,7 @@ def _match_knowledge_entries(
             scored.append((score, content))
 
     if not scored:
-        return [
-            KnowledgeChunk(content=content, source=source, source_type=source_type)
-            for _, content in entries[:fallback_limit]
-        ]
+        return []
 
     scored.sort(key=lambda item: item[0], reverse=True)
     return [
@@ -205,6 +202,9 @@ class RAGProvider(KnowledgeProvider):
         self,
         state: DialogueState,
         user_message: UserMessage,
+        enable_hyde: bool | None = None,
+        enable_web: bool | None = None,
+        skip_rewrite: bool | None = None,
     ) -> list[KnowledgeChunk]:
         query = (user_message.text or "").strip()
         if settings.rag_enabled and query:
@@ -221,10 +221,14 @@ class RAGProvider(KnowledgeProvider):
                 if state.shared.sessions
                 else state.sender_id
             )
+            should_skip_rewrite = bool(item_names) if skip_rewrite is None else skip_rewrite
             try:
                 remote_items = await rag_client.retrieve(
                     query=query,
                     item_names=item_names,
+                    enable_hyde=enable_hyde,
+                    enable_web=enable_web,
+                    skip_rewrite=should_skip_rewrite,
                     session_id=session_id,
                 )
                 chunks: list[KnowledgeChunk] = []

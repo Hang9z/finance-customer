@@ -137,7 +137,7 @@ class TestFinanceKnowledgeProviders(unittest.IsolatedAsyncioTestCase):
             sender_id="CUST00000001",
             message_id="m5",
             type=MessageType.TEXT,
-            text="有什么理财推荐？",
+            text="有什么理财推荐和风险测评要求？",
         )
 
         with patch(
@@ -255,6 +255,9 @@ class TestFinanceKnowledgeProviders(unittest.IsolatedAsyncioTestCase):
             result = await engine.process_message(state, msg)
 
         self.assertEqual(mock_retrieve.await_count, 1)
+        self.assertEqual(mock_retrieve.await_args.kwargs["enable_hyde"], False)
+        self.assertEqual(mock_retrieve.await_args.kwargs["enable_web"], False)
+        self.assertEqual(mock_retrieve.await_args.kwargs["skip_rewrite"], True)
         engine.chitchat_handler.chitchat.assert_not_awaited()
         self.assertEqual(len(result.messages), 1)
         self.assertIn("53,909,252,220.51", result.messages[0].text)
@@ -263,6 +266,46 @@ class TestFinanceKnowledgeProviders(unittest.IsolatedAsyncioTestCase):
             result.messages[0].citations[0]["source"],
             "贵州茅台酒股份有限公司2026 年第一季度报告",
         )
+
+    async def test_local_fallback_returns_empty_on_unrelated_query(self):
+        faq = FAQProvider()
+        rag = RAGProvider()
+        state = DialogueState(sender_id="CUS00000001")
+        msg = UserMessage(
+            sender_id="CUS00000001",
+            message_id="m9",
+            type=MessageType.TEXT,
+            text="今天天气真不错呀",
+        )
+        self.assertEqual(await faq.execute(state, msg), [])
+        with patch(
+            "customer.handlers.knowledge.provider.rag_client.retrieve",
+            new=AsyncMock(return_value=[]),
+        ):
+            self.assertEqual(await rag.execute(state, msg), [])
+
+    async def test_rag_provider_skips_rewrite_when_focused_product_known(self):
+        rag = RAGProvider()
+        state = DialogueState(sender_id="CUS00000001")
+        state.shared.focused_object = FocusedObject(
+            type="finance_product",
+            id="EFUND_C",
+            title="易方达智造优势混合C",
+        )
+        msg = UserMessage(
+            sender_id="CUS00000001",
+            message_id="m10",
+            type=MessageType.TEXT,
+            text="费率是多少？",
+        )
+        with patch(
+            "customer.handlers.knowledge.provider.rag_client.retrieve",
+            new=AsyncMock(return_value=[{"content": "1.81%", "file_title": "基金概要"}]),
+        ) as mock_retrieve:
+            chunks = await rag.execute(state, msg)
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(mock_retrieve.await_args.kwargs["item_names"], ["易方达智造优势混合C"])
+        self.assertTrue(mock_retrieve.await_args.kwargs["skip_rewrite"])
 
 
 if __name__ == "__main__":

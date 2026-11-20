@@ -8,19 +8,17 @@ from customer.config.config import settings
 from customer.handlers.chitchat.chitchat_handler import ChitChatHandler
 from customer.handlers.clarify.clarify_response import ClarifyResponse
 from customer.domain.messages import UserMessage, ProcessResult, BotMessage, MessageType
-from customer.domain.state import DialogueState, Session, Turn, TaskInstance, FocusedObject
+from customer.domain.state import DialogueState, Session, Turn, FocusedObject
 from customer.engine.protocol import build_workflow_snapshot
 from customer.handlers.knowledge.handler import KnowledgeHandler
 from customer.handlers.knowledge.provider import KnowledgeChunk
-from customer.handlers.task.command.command_executor import CommandExecutor
-from customer.handlers.task.response.task_event_type import TaskEvent
-from customer.plan.command import Command, StartFlowCommand, SetSlotsCommand, ResumeTaskCommand, CancelTaskCommand
+from customer.plan.command import SetSlotsCommand
 from customer.plan.turn_plan import TurnPlan, TurnPlanValidationResult, ClarifyReason
 from customer.plan.turn_plan_validation import TurnPlanValidation
 from customer.plan.turn_planner import TurnPlanner
 from customer.handlers.task.flow.loader import FlowLoader
 from customer.handlers.task.flow.models import FlowCatalog, OBJECT_TYPE_SLOT_CANDIDATES
-from customer.handlers.task.flow.steps import FlowStep, CollectSlotStep, ConfirmFlowStep
+from customer.handlers.task.flow.steps import CollectSlotStep, ConfirmFlowStep
 from customer.handlers.task.task_handler import TaskHandler
 from customer.security.guardrails import check_user_input_safety
 from customer.security.masking import mask_sensitive_text
@@ -373,7 +371,13 @@ class DialogueEngine:
         if rag_provider is None:
             return []
         try:
-            chunks = await rag_provider.execute(state=state, user_message=user_message)
+            chunks = await rag_provider.execute(
+                state=state,
+                user_message=user_message,
+                enable_hyde=False,
+                enable_web=False,
+                skip_rewrite=True,
+            )
         except Exception:
             return []
         return [

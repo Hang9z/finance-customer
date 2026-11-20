@@ -40,6 +40,7 @@ class RagClient:
         item_names: list[str] | None = None,
         enable_hyde: bool | None = None,
         enable_web: bool | None = None,
+        skip_rewrite: bool = False,
         session_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """调用 finance_brain `/api/v1/retrieve` 获取精排知识切片."""
@@ -51,6 +52,7 @@ class RagClient:
             "item_names": item_names or [],
             "enable_hyde": settings.rag_enable_hyde if enable_hyde is None else enable_hyde,
             "enable_web": settings.rag_enable_web if enable_web is None else enable_web,
+            "skip_rewrite": skip_rewrite,
         }
         read_timeout = self.timeout if (self.timeout is not None and self.timeout > 0) else None
         req_timeout = httpx.Timeout(read_timeout, connect=3.0)
